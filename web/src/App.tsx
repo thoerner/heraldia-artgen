@@ -147,23 +147,28 @@ const FAQ_ITEMS: { q: string; a: string }[] = [
   },
 ];
 
-function FAQ() {
+function FAQPage({ onBack }: { onBack: () => void }) {
   return (
-    <section className="faq">
-      <h3 className="faq-heading">FAQ</h3>
-      <div className="faq-list">
-        {FAQ_ITEMS.map((item) => (
-          <details key={item.q} className="faq-item">
-            <summary>{item.q}</summary>
-            <p>{item.a}</p>
-          </details>
-        ))}
+    <div className="faq-page">
+      <button className="back-btn" onClick={onBack}>
+        <span aria-hidden="true">&larr;</span> Back
+      </button>
+      <div className="faq">
+        <h2 className="faq-heading">Frequently Asked Questions</h2>
+        <div className="faq-list">
+          {FAQ_ITEMS.map((item) => (
+            <details key={item.q} className="faq-item">
+              <summary>{item.q}</summary>
+              <p>{item.a}</p>
+            </details>
+          ))}
+        </div>
       </div>
-    </section>
+    </div>
   );
 }
 
-function Landing() {
+function Landing({ onFaq }: { onFaq: () => void }) {
   return (
     <div className="landing">
       <div className="landing-hero">
@@ -212,9 +217,12 @@ function Landing() {
           >
             Etherscan
           </a>
+          <span className="sep" />
+          <button className="landing-link-btn" onClick={onFaq}>
+            FAQ
+          </button>
         </div>
       </div>
-      <FAQ />
     </div>
   );
 }
@@ -954,14 +962,19 @@ function Crafter({
 // Root App
 // ---------------------------------------------------------------------------
 
+type Page = "home" | "faq";
+
 function App() {
   const { address } = useAccount();
   const [selectedToken, setSelectedToken] = useState<bigint | null>(null);
   const [theme, toggleTheme] = useTheme();
+  const [page, setPage] = useState<Page>("home");
 
   useEffect(() => {
     if (!address) setSelectedToken(null);
   }, [address]);
+
+  const showFaq = page === "faq";
 
   return (
     <div className="app">
@@ -990,18 +1003,24 @@ function App() {
         </div>
       </header>
 
-      {!address && <Landing />}
+      {showFaq ? (
+        <FAQPage onBack={() => setPage("home")} />
+      ) : (
+        <>
+          {!address && <Landing onFaq={() => setPage("faq")} />}
 
-      {address && !selectedToken && (
-        <Gallery address={address} onSelect={setSelectedToken} />
-      )}
+          {address && !selectedToken && (
+            <Gallery address={address} onSelect={setSelectedToken} />
+          )}
 
-      {address && selectedToken !== null && (
-        <Crafter
-          tokenId={selectedToken}
-          ownerAddress={address}
-          onBack={() => setSelectedToken(null)}
-        />
+          {address && selectedToken !== null && (
+            <Crafter
+              tokenId={selectedToken}
+              ownerAddress={address}
+              onBack={() => setSelectedToken(null)}
+            />
+          )}
+        </>
       )}
 
       <footer className="app-footer">
@@ -1014,6 +1033,10 @@ function App() {
         >
           {HERALDIA_ADDRESS.slice(0, 6)}&hellip;{HERALDIA_ADDRESS.slice(-4)}
         </a>
+        <span className="footer-sep">&middot;</span>
+        <button className="footer-link" onClick={() => setPage(page === "faq" ? "home" : "faq")}>
+          FAQ
+        </button>
         <DonateWithQR />
       </footer>
     </div>

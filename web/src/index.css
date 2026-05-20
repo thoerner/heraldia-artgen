@@ -202,8 +202,7 @@ header h1 {
 
 .landing {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  justify-content: center;
   padding: 2rem 0 1.5rem;
 }
 
@@ -298,14 +297,27 @@ header h1 {
   background: var(--border-strong);
 }
 
-/* ---- FAQ ---- */
+.landing-link-btn {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+  transition: color var(--transition);
+}
+
+.landing-link-btn:hover {
+  color: var(--accent);
+}
+
+/* ---- FAQ Page ---- */
+
+.faq-page {
+  padding: 0 0 2rem;
+}
 
 .faq {
-  max-width: 560px;
-  width: 100%;
-  margin: 2.5rem auto 0;
-  padding-top: 2rem;
-  border-top: 1px solid var(--border);
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 .faq-heading {
@@ -315,8 +327,7 @@ header h1 {
   letter-spacing: 0.16em;
   color: var(--text-dim);
   font-weight: 600;
-  margin-bottom: 1rem;
-  text-align: center;
+  margin-bottom: 1.25rem;
 }
 
 .faq-list {
@@ -1326,6 +1337,19 @@ main {
 .app-footer .footer-sep {
   margin: 0 0.5rem;
   color: var(--border-strong);
+}
+
+.footer-link {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+  letter-spacing: 0.06em;
+  transition: color var(--transition);
+}
+
+.footer-link:hover {
+  color: var(--accent);
 }
 
 .donate-row {
