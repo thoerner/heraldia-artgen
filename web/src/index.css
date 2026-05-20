@@ -771,3 +771,29 @@ main {
   margin: 0 0.5rem;
   color: var(--border-strong);
 }
+
+.donate-row {
+  margin-top: 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.donate-addr {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.2em 0.45em;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.donate-addr:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}

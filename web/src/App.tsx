@@ -19,6 +19,8 @@ import { usePreview } from "./usePreview";
 // Gallery token type
 // ---------------------------------------------------------------------------
 
+const DONATE_ADDRESS = "0xc05FFc2fa06DAC5BaF09072752Cc21Cc832f6341";
+
 interface OwnedToken {
   tokenId: bigint;
   svg: string | null;
@@ -596,6 +598,16 @@ function App() {
         >
           {HERALDIA_ADDRESS.slice(0, 6)}&hellip;{HERALDIA_ADDRESS.slice(-4)}
         </a>
+        <div className="donate-row">
+          <span>Donations welcome</span>
+          <code
+            className="donate-addr"
+            onClick={() => navigator.clipboard.writeText(DONATE_ADDRESS)}
+            title="Click to copy"
+          >
+            {DONATE_ADDRESS.slice(0, 6)}&hellip;{DONATE_ADDRESS.slice(-4)}
+          </code>
+        </div>
       </footer>
     </div>
   );
