@@ -763,6 +763,157 @@ async function cmdCraft(tokenId, desiredTraits, options = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Color search: brute-force seeds to find a target accent color
+// ---------------------------------------------------------------------------
+
+async function cmdColorSearch(tokenId, targetColor, desiredTraits = {}, options = {}) {
+  const mapPath = "output/trait-map.json";
+  if (!existsSync(mapPath)) {
+    console.error(`Error: ${mapPath} not found. Run 'analyze' first.`);
+    process.exit(1);
+  }
+
+  const traitMap = JSON.parse(readFileSync(mapPath, "utf-8"));
+  const maxAttempts = options.maxAttempts || 500;
+  const concurrency = options.concurrency || 8;
+  const pool = createPool(concurrency);
+
+  // Normalize target color
+  const target = targetColor.toLowerCase().startsWith("#")
+    ? targetColor.toLowerCase()
+    : `#${targetColor.toLowerCase()}`;
+
+  // Check if this color exists in any known palette
+  const allAccents = new Set();
+  for (const palette of traitMap._palettes.catalog) {
+    for (const c of palette) {
+      if (c !== "#000000" && c !== "#ffffff") allAccents.add(c);
+    }
+  }
+
+  if (!allAccents.has(target)) {
+    console.log(`\n  Warning: ${target} was not seen in the ${allAccents.size} known palette accents.`);
+    console.log(`  The search may not find a match. Use 'color-list' to see available colors.`);
+
+    // Suggest closest color
+    const dist = (a, b) => {
+      const ar = parseInt(a.slice(1,3),16), ag = parseInt(a.slice(3,5),16), ab = parseInt(a.slice(5,7),16);
+      const br = parseInt(b.slice(1,3),16), bg = parseInt(b.slice(3,5),16), bb = parseInt(b.slice(5,7),16);
+      return Math.sqrt((ar-br)**2 + (ag-bg)**2 + (ab-bb)**2);
+    };
+    const closest = [...allAccents].sort((a, b) => dist(a, target) - dist(b, target))[0];
+    console.log(`  Closest known color: ${closest} (distance: ${dist(closest, target).toFixed(1)})\n`);
+  }
+
+  const owner = await client.readContract({
+    address: HERALDIA,
+    abi: heraldiaAbi,
+    functionName: "ownerOf",
+    args: [BigInt(tokenId)],
+  });
+
+  // Build trait-constrained bytes
+  const traitBytes = {};
+  for (const [traitType, desiredValue] of Object.entries(desiredTraits)) {
+    const info = traitMap[traitType];
+    if (!info || info.type === "palette") continue;
+    const reverseMap = {};
+    for (const [key, val] of Object.entries(info.mapping)) reverseMap[val] = Number(key);
+    if (reverseMap[desiredValue] === undefined) {
+      console.error(`  Error: '${desiredValue}' is not valid for ${traitType}. Options: ${info.values.join(", ")}`);
+      process.exit(1);
+    }
+    traitBytes[info.byte] = reverseMap[desiredValue];
+  }
+
+  console.log(`\n  Searching for color ${target} (up to ${maxAttempts} attempts, concurrency ${concurrency})...`);
+  if (Object.keys(desiredTraits).length > 0) {
+    console.log(`  Fixed traits: ${Object.entries(desiredTraits).map(([k,v]) => `${k}=${v}`).join(", ")}`);
+  }
+
+  let found = null;
+  let completed = 0;
+  const matches = [];
+
+  const tasks = [];
+  for (let i = 0; i < maxAttempts; i++) {
+    tasks.push(i);
+  }
+
+  await Promise.allSettled(
+    tasks.map((i) =>
+      pool(async () => {
+        if (found && matches.length >= 5) return;
+
+        const hashBytes = randomBytes(32);
+        for (const [pos, val] of Object.entries(traitBytes)) {
+          hashBytes[Number(pos)] = val;
+        }
+        const hash = toHex(hashBytes);
+
+        const { colors } = await fetchMetadataForProbe(tokenId, hash, owner);
+        completed++;
+
+        if (completed % 25 === 0) {
+          process.stdout.write(`\r    ${completed}/${maxAttempts} tested, ${matches.length} matches found`);
+        }
+
+        if (colors.includes(target)) {
+          if (!found) found = hash;
+          matches.push({ hash, colors, seed: i });
+        }
+      })
+    )
+  );
+  console.log(`\r    ${completed}/${maxAttempts} tested, ${matches.length} matches found`);
+
+  if (matches.length === 0) {
+    console.log(`\n  No match found for ${target} in ${maxAttempts} attempts.`);
+    console.log(`  Try increasing --max or use a color from 'color-list'.`);
+  } else {
+    console.log(`\n  Found ${matches.length} match(es):\n`);
+    for (const m of matches.slice(0, 5)) {
+      console.log(`    Hash:   ${m.hash}`);
+      console.log(`    Colors: ${m.colors.join("  ")}\n`);
+    }
+
+    // Preview the first match
+    await cmdPreview(tokenId, matches[0].hash, `color search: ${target}`);
+  }
+}
+
+async function cmdColorList() {
+  const mapPath = "output/trait-map.json";
+  if (!existsSync(mapPath)) {
+    console.error(`Error: ${mapPath} not found. Run 'analyze' first.`);
+    process.exit(1);
+  }
+
+  const traitMap = JSON.parse(readFileSync(mapPath, "utf-8"));
+  const accents = new Map();
+
+  for (const palette of traitMap._palettes.catalog) {
+    for (const c of palette) {
+      if (c === "#000000" || c === "#ffffff") continue;
+      accents.set(c, (accents.get(c) || 0) + 1);
+    }
+  }
+
+  const sorted = [...accents.entries()].sort((a, b) => b[1] - a[1]);
+
+  console.log(`\n  ${sorted.length} distinct accent colors from ${traitMap._palettes.catalog.length} palettes:\n`);
+  console.log("  Freq  Color      RGB");
+  console.log("  ────  ─────────  ───────────────");
+  for (const [color, count] of sorted) {
+    const r = parseInt(color.slice(1,3), 16);
+    const g = parseInt(color.slice(3,5), 16);
+    const b = parseInt(color.slice(5,7), 16);
+    console.log(`  ${String(count).padStart(4)}  ${color}  (${r}, ${g}, ${b})`);
+  }
+  console.log();
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -771,13 +922,16 @@ function usage() {
 Heraldia Art Generator — local artwork pipeline
 
 Usage:
-  node generate.mjs fetch    <tokenId>                   Fetch real on-chain artwork
-  node generate.mjs preview  <tokenId> --hash <bytes32>  Preview with a specific hash
-  node generate.mjs preview  <tokenId> --wallet <addr>   Preview as if wallet owned it
-  node generate.mjs preview  <tokenId> --random          Preview with a random hash
-  node generate.mjs probe    <tokenId> [--concurrency N] Probe hash→trait mapping
-  node generate.mjs analyze                              Analyze probe results → trait map
-  node generate.mjs craft    <tokenId> [--seed N] --<Trait> <value>  Craft hash for desired traits
+  node generate.mjs fetch        <tokenId>                              Fetch real on-chain artwork
+  node generate.mjs preview      <tokenId> --hash <bytes32>             Preview with a specific hash
+  node generate.mjs preview      <tokenId> --wallet <addr>              Preview as if wallet owned it
+  node generate.mjs preview      <tokenId> --random                     Preview with a random hash
+  node generate.mjs probe        <tokenId> [--concurrency N]            Probe hash→trait mapping
+  node generate.mjs analyze                                             Analyze probe results → trait map
+  node generate.mjs craft        <tokenId> [--seed N] --<Trait> <value> Craft hash for desired traits
+  node generate.mjs color-list                                          List all known accent colors
+  node generate.mjs color-search <tokenId> <#hex> [--max N] [--<Trait> <value>]
+                                                                        Brute-force hashes for a target color
 
 Examples:
   node generate.mjs fetch 1
@@ -785,7 +939,9 @@ Examples:
   node generate.mjs probe 1702
   node generate.mjs analyze
   node generate.mjs craft 1702 --Background "Grid Bold" --Pattern "Cross"
-  node generate.mjs craft 1702 --seed 42 --Background "Grid Bold" --Pattern "Cross"
+  node generate.mjs color-list
+  node generate.mjs color-search 1702 "#efaf00"
+  node generate.mjs color-search 1702 "#efaf00" --max 200 --Background "Solid"
 
 Output is saved to the output/ directory.
 `);
@@ -861,6 +1017,36 @@ async function main() {
 
   if (command === "analyze") {
     await cmdAnalyze();
+    return;
+  }
+
+  if (command === "color-list") {
+    await cmdColorList();
+    return;
+  }
+
+  if (command === "color-search") {
+    const tokenId = args[1];
+    const targetColor = args[2];
+    if (!tokenId || !targetColor) {
+      console.error("Error: usage: node generate.mjs color-search <tokenId> <#hex> [--max N] [--<Trait> <value>]");
+      process.exit(1);
+    }
+    const maxIdx = args.indexOf("--max");
+    const maxAttempts = maxIdx !== -1 ? Number(args[maxIdx + 1]) : 500;
+    const concIdx = args.indexOf("--concurrency");
+    const concurrency = concIdx !== -1 ? Number(args[concIdx + 1]) : 8;
+    const desiredTraits = {};
+    const skipFlags = new Set(["--max", "--concurrency"]);
+    for (let i = 3; i < args.length; i++) {
+      if (skipFlags.has(args[i])) { i++; continue; }
+      if (args[i].startsWith("--")) {
+        const key = args[i].slice(2);
+        const val = args[i + 1];
+        if (val) { desiredTraits[key] = val; i++; }
+      }
+    }
+    await cmdColorSearch(tokenId, targetColor, desiredTraits, { maxAttempts, concurrency });
     return;
   }
 

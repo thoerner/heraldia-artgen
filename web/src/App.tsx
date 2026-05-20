@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useReadContract, useWriteContract, usePublicClient } from "wagmi";
+import { QRCodeSVG } from "qrcode.react";
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import {
   HERALDIA_ADDRESS,
   RENDERER_ADDRESS,
@@ -14,12 +15,97 @@ import {
 } from "./contracts";
 import { craftHash, randomSeed, type TraitSelection } from "./hashCraft";
 import { usePreview } from "./usePreview";
+import { usePastLooks } from "./usePastLooks";
+import { useColorSearch } from "./useColorSearch";
+import { useColorSweep } from "./useColorSweep";
+import { ACCENT_COLORS } from "./accentColors";
 
 // ---------------------------------------------------------------------------
 // Gallery token type
 // ---------------------------------------------------------------------------
 
 const DONATE_ADDRESS = "0xc05FFc2fa06DAC5BaF09072752Cc21Cc832f6341";
+
+// ---------------------------------------------------------------------------
+// Theme toggle
+// ---------------------------------------------------------------------------
+
+type Theme = "dark" | "light";
+
+function useTheme(): [Theme, () => void] {
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof window === "undefined") return "dark";
+    return (localStorage.getItem("hf-theme") as Theme) ?? "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("hf-theme", theme);
+  }, [theme]);
+
+  const toggle = useCallback(
+    () => setTheme((t) => (t === "dark" ? "light" : "dark")),
+    [],
+  );
+
+  return [theme, toggle];
+}
+
+// ---------------------------------------------------------------------------
+// Donation QR popover
+// ---------------------------------------------------------------------------
+
+function DonateWithQR() {
+  const [show, setShow] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  function copy() {
+    navigator.clipboard.writeText(DONATE_ADDRESS);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  useEffect(() => {
+    if (!show) return;
+    function onClickOutside(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setShow(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [show]);
+
+  return (
+    <div className="donate-row" ref={wrapRef}>
+      <span>Donations welcome</span>
+      <code
+        className="donate-addr"
+        onClick={copy}
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        title="Click to copy"
+      >
+        {copied
+          ? "Copied!"
+          : `${DONATE_ADDRESS.slice(0, 6)}\u2026${DONATE_ADDRESS.slice(-4)}`}
+      </code>
+      {show && (
+        <div className="qr-popover" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+          <QRCodeSVG
+            value={`ethereum:${DONATE_ADDRESS}`}
+            size={140}
+            bgColor="transparent"
+            fgColor="currentColor"
+            level="M"
+          />
+          <span className="qr-label">{DONATE_ADDRESS.slice(0, 10)}&hellip;{DONATE_ADDRESS.slice(-6)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface OwnedToken {
   tokenId: bigint;
@@ -268,14 +354,75 @@ function Crafter({
   });
   const [seed, setSeed] = useState(() => randomSeed());
   const [copied, setCopied] = useState(false);
+  const [overrideHash, setOverrideHash] = useState<`0x${string}` | null>(null);
+  const [targetColor, setTargetColor] = useState<string | null>(null);
+  const [colorHash, setColorHash] = useState<`0x${string}` | null>(null);
+
+  const publicClient = usePublicClient();
+
+  const {
+    search: colorSearch,
+    cancel: cancelColorSearch,
+    searching: colorSearching,
+    progress: colorProgress,
+    results: colorResults,
+  } = useColorSearch();
+
+  const {
+    available: sweepColors,
+    colorToHash: sweepColorToHash,
+    sweeping,
+    progress: sweepProgress,
+    resweep,
+  } = useColorSweep(tokenId, ownerAddress, traits);
+
+  const activeHash = overrideHash ?? colorHash ?? craftHash(traits, seed);
 
   function copyHash() {
-    navigator.clipboard.writeText(craftedHash);
+    navigator.clipboard.writeText(activeHash);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
 
-  const publicClient = usePublicClient();
+  function handleTraitChange(traitName: TraitName, value: number) {
+    setOverrideHash(null);
+    setColorHash(null);
+    setTraits((prev) => ({ ...prev, [traitName]: value }));
+  }
+
+  function handleSeedChange(value: number) {
+    setOverrideHash(null);
+    setColorHash(null);
+    setSeed(value);
+  }
+
+  function handleColorPick(color: string) {
+    if (targetColor === color) {
+      setTargetColor(null);
+      setColorHash(null);
+      cancelColorSearch();
+      return;
+    }
+    const sweepDone = !sweeping && sweepColors.size > 0;
+    const dimmed = sweepDone && !sweepColors.has(color);
+    if (dimmed) return;
+
+    setTargetColor(color);
+    setOverrideHash(null);
+
+    const knownHash = sweepColorToHash.get(color);
+    if (knownHash) {
+      setColorHash(knownHash);
+      cancelColorSearch();
+    } else {
+      setColorHash(null);
+      colorSearch(tokenId, ownerAddress, color, traits);
+    }
+  }
+
+  function handleColorResultPick(result: { hash: `0x${string}`; svg: string }) {
+    setColorHash(result.hash);
+  }
 
   // On-chain reads
   const { data: activeHashResult } = useReadContract({
@@ -331,7 +478,13 @@ function Crafter({
     fetchCurrentArt();
   }, [fetchCurrentArt]);
 
-  // Preview with crafted hash
+  // Past looks from on-chain events
+  const { looks: pastLooks, loading: pastLooksLoading } = usePastLooks(
+    tokenId,
+    ownerAddress,
+  );
+
+  // Preview with active hash
   const {
     preview,
     loading: previewLoading,
@@ -339,45 +492,92 @@ function Crafter({
     result: previewResult,
   } = usePreview();
 
-  const craftedHash = craftHash(traits, seed);
-
   const runPreview = useCallback(() => {
-    preview(tokenId, craftedHash, ownerAddress);
-  }, [tokenId, ownerAddress, craftedHash, preview]);
+    preview(tokenId, activeHash, ownerAddress);
+  }, [tokenId, ownerAddress, activeHash, preview]);
 
   useEffect(() => {
     const timer = setTimeout(runPreview, 300);
     return () => clearTimeout(timer);
-  }, [traits, seed, runPreview]);
+  }, [runPreview]);
 
   // Write contracts
   const {
     writeContract: writeSelectArt,
     isPending: selectArtPending,
-    isSuccess: selectArtSuccess,
+    data: selectArtTxHash,
+    reset: resetSelectArt,
   } = useWriteContract();
-  const { writeContract: writeResetArt, isPending: resetArtPending } =
-    useWriteContract();
+  const {
+    writeContract: writeResetArt,
+    isPending: resetArtPending,
+    data: resetArtTxHash,
+    reset: resetResetArt,
+  } = useWriteContract();
+
+  const {
+    isLoading: selectArtConfirming,
+    isSuccess: selectArtConfirmed,
+  } = useWaitForTransactionReceipt({ hash: selectArtTxHash });
+
+  const {
+    isLoading: resetArtConfirming,
+    isSuccess: resetArtConfirmed,
+  } = useWaitForTransactionReceipt({ hash: resetArtTxHash });
 
   const hasCustomArt = activeHashResult?.[0] === true;
+  const onChainHash = hasCustomArt ? activeHashResult![1] : null;
+
+  const [txMessage, setTxMessage] = useState<{ type: "success" | "info"; text: string } | null>(null);
 
   useEffect(() => {
-    if (selectArtSuccess) {
-      const timer = setTimeout(fetchCurrentArt, 3000);
+    if (selectArtConfirming) {
+      setTxMessage({ type: "info", text: "Transaction pending\u2026" });
+    }
+  }, [selectArtConfirming]);
+
+  useEffect(() => {
+    if (selectArtConfirmed) {
+      setTxMessage({ type: "success", text: "Custom art applied on-chain!" });
+      fetchCurrentArt();
+      const timer = setTimeout(() => {
+        setTxMessage(null);
+        resetSelectArt();
+      }, 5000);
       return () => clearTimeout(timer);
     }
-  }, [selectArtSuccess, fetchCurrentArt]);
+  }, [selectArtConfirmed, fetchCurrentArt, resetSelectArt]);
+
+  useEffect(() => {
+    if (resetArtConfirming) {
+      setTxMessage({ type: "info", text: "Transaction pending\u2026" });
+    }
+  }, [resetArtConfirming]);
+
+  useEffect(() => {
+    if (resetArtConfirmed) {
+      setTxMessage({ type: "success", text: "Art reset to default!" });
+      fetchCurrentArt();
+      const timer = setTimeout(() => {
+        setTxMessage(null);
+        resetResetArt();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [resetArtConfirmed, fetchCurrentArt, resetResetArt]);
 
   function handleSelectArt() {
+    setTxMessage(null);
     writeSelectArt({
       address: ART_SELECTION_ADDRESS,
       abi: artSelectionAbi,
       functionName: "selectArt",
-      args: [tokenId, craftedHash],
+      args: [tokenId, activeHash],
     });
   }
 
   function handleResetArt() {
+    setTxMessage(null);
     writeResetArt({
       address: ART_SELECTION_ADDRESS,
       abi: artSelectionAbi,
@@ -440,53 +640,180 @@ function Crafter({
               </div>
             ))}
           </div>
+
+          {pastLooks.length > 0 && (
+            <div className="past-looks">
+              <h3 className="past-looks-heading">
+                Past Looks{" "}
+                <span className="count">({pastLooks.length})</span>
+              </h3>
+              <div className="past-looks-grid">
+                {pastLooks.map((look) => (
+                  <button
+                    key={look.hash}
+                    className={`past-look-card${onChainHash === look.hash ? " active" : ""}${overrideHash === look.hash ? " selected" : ""}`}
+                    onClick={() => setOverrideHash(look.hash)}
+                    title={look.hash}
+                  >
+                    <div className="past-look-art">
+                      {look.svg ? (
+                        <div
+                          dangerouslySetInnerHTML={{ __html: look.svg }}
+                        />
+                      ) : (
+                        <div className="loading">...</div>
+                      )}
+                    </div>
+                    <span className="past-look-label">
+                      {look.hash.slice(0, 6)}&hellip;{look.hash.slice(-4)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {pastLooksLoading && (
+                <p className="past-looks-status">Loading previews&hellip;</p>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="panel craft-panel">
           <div className="panel-header">
             <h2>Preview</h2>
+            {overrideHash && (
+              <button
+                className="override-clear"
+                onClick={() => setOverrideHash(null)}
+              >
+                Back to crafter
+              </button>
+            )}
           </div>
 
-          <div className="controls">
-            {(Object.keys(TRAIT_MAP) as TraitName[]).map((traitName) => (
-              <div key={traitName} className="control-row">
-                <label>{traitName}</label>
-                <select
-                  value={traits[traitName]}
-                  onChange={(e) =>
-                    setTraits((prev) => ({
-                      ...prev,
-                      [traitName]: Number(e.target.value),
-                    }))
-                  }
-                >
-                  {TRAIT_MAP[traitName].options.map((opt) => (
-                    <option key={opt.index} value={opt.index}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
+          {!overrideHash && (
+            <div className="controls">
+              {(Object.keys(TRAIT_MAP) as TraitName[]).map((traitName) => (
+                <div key={traitName} className="control-row">
+                  <label>{traitName}</label>
+                  <select
+                    value={traits[traitName]}
+                    onChange={(e) =>
+                      handleTraitChange(traitName, Number(e.target.value))
+                    }
+                  >
+                    {TRAIT_MAP[traitName].options.map((opt) => (
+                      <option key={opt.index} value={opt.index}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
 
-            <div className="control-row">
-              <label>Color Seed</label>
-              <div className="seed-input">
-                <input
-                  type="number"
-                  value={seed}
-                  onChange={(e) => setSeed(Number(e.target.value))}
-                />
-                <button
-                  onClick={() => setSeed(randomSeed())}
-                  title="Randomize color seed"
-                  aria-label="Randomize color seed"
-                >
-                  ↻
-                </button>
+              <div className="control-row">
+                <label>Variation Seed</label>
+                <div className="seed-input">
+                  <input
+                    type="number"
+                    value={seed}
+                    onChange={(e) => handleSeedChange(Number(e.target.value))}
+                  />
+                  <button
+                    onClick={() => handleSeedChange(randomSeed())}
+                    title="Randomize variation seed"
+                    aria-label="Randomize variation seed"
+                  >
+                    ↻
+                  </button>
+                </div>
+              </div>
+
+              <div className="color-picker-section">
+                <label>
+                  Find Color
+                  {targetColor && (
+                    <span
+                      className="color-active-dot"
+                      style={{ background: targetColor }}
+                    />
+                  )}
+                  {sweeping && (
+                    <span className="sweep-status">
+                      scanning {Math.round(sweepProgress * 100)}%
+                    </span>
+                  )}
+                  {!sweeping && sweepColors.size > 0 && (
+                    <span className="sweep-status sweep-done">
+                      {sweepColors.size} colors
+                      <button
+                        className="sweep-refresh"
+                        onClick={resweep}
+                        title="Rescan for different colors"
+                        aria-label="Rescan colors"
+                      >
+                        ↻
+                      </button>
+                    </span>
+                  )}
+                </label>
+                <div className="color-swatches">
+                  {ACCENT_COLORS.map((c) => {
+                    const reachable = sweepColors.has(c);
+                    const dimmed = !sweeping && sweepColors.size > 0 && !reachable;
+                    return (
+                      <button
+                        key={c}
+                        className={`color-swatch${targetColor === c ? " selected" : ""}${dimmed ? " dimmed" : ""}`}
+                        style={{ background: c }}
+                        onClick={() => handleColorPick(c)}
+                        title={`${c}${dimmed ? " (not found for these traits)" : ""}`}
+                        aria-label={`Pick color ${c}`}
+                      />
+                    );
+                  })}
+                </div>
+                {colorSearching && (
+                  <div className="color-search-status">
+                    <span className="tx-spinner" />
+                    Searching… {colorProgress.tested} tested, {colorProgress.found} found
+                    <button
+                      className="color-search-cancel"
+                      onClick={() => { cancelColorSearch(); setTargetColor(null); }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+                {!colorSearching && targetColor && colorResults.length === 0 && colorProgress.tested > 0 && (
+                  <div className="color-search-status color-search-empty">
+                    No matches found. Try different traits or search again.
+                  </div>
+                )}
+                {colorResults.length > 0 && (
+                  <div className="color-results">
+                    <span className="color-results-label">
+                      {colorResults.length} match{colorResults.length !== 1 ? "es" : ""}
+                    </span>
+                    <div className="color-results-grid">
+                      {colorResults.map((r) => (
+                        <button
+                          key={r.hash}
+                          className={`color-result-card${overrideHash === r.hash ? " selected" : ""}`}
+                          onClick={() => handleColorResultPick(r)}
+                          title={r.hash}
+                        >
+                          <div
+                            className="color-result-art"
+                            dangerouslySetInnerHTML={{ __html: r.svg }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          )}
 
           <div className="svg-frame">
             {previewLoading ? (
@@ -513,7 +840,7 @@ function Crafter({
 
           <div className="hash-display">
             <label>
-              <span>Crafted Hash</span>
+              <span>{overrideHash ? "Past Hash" : colorHash ? "Color Match" : "Crafted Hash"}</span>
               {copied && <span className="copy-status">Copied</span>}
             </label>
             <code
@@ -521,25 +848,40 @@ function Crafter({
               onClick={copyHash}
               title="Click to copy"
             >
-              {craftedHash}
+              {activeHash}
             </code>
           </div>
+
+          {txMessage && (
+            <div className={`tx-message tx-${txMessage.type}`}>
+              {txMessage.type === "info" && <span className="tx-spinner" />}
+              {txMessage.text}
+            </div>
+          )}
 
           <div className="actions">
             <button
               className="btn-primary"
               onClick={handleSelectArt}
-              disabled={selectArtPending}
+              disabled={selectArtPending || selectArtConfirming}
             >
-              {selectArtPending ? "Confirming\u2026" : "Apply On-Chain"}
+              {selectArtPending
+                ? "Confirm in wallet\u2026"
+                : selectArtConfirming
+                  ? "Mining\u2026"
+                  : "Apply On-Chain"}
             </button>
             <button
               className="btn-secondary"
               onClick={handleResetArt}
-              disabled={!hasCustomArt || resetArtPending}
+              disabled={!hasCustomArt || resetArtPending || resetArtConfirming}
               title={!hasCustomArt ? "No custom art to reset" : ""}
             >
-              {resetArtPending ? "Confirming\u2026" : "Reset Art"}
+              {resetArtPending
+                ? "Confirm in wallet\u2026"
+                : resetArtConfirming
+                  ? "Mining\u2026"
+                  : "Reset Art"}
             </button>
           </div>
         </section>
@@ -555,8 +897,8 @@ function Crafter({
 function App() {
   const { address } = useAccount();
   const [selectedToken, setSelectedToken] = useState<bigint | null>(null);
+  const [theme, toggleTheme] = useTheme();
 
-  // Reset selection when wallet disconnects
   useEffect(() => {
     if (!address) setSelectedToken(null);
   }, [address]);
@@ -565,13 +907,27 @@ function App() {
     <div className="app">
       <header>
         <h1>Herald&rsquo;s Forge</h1>
-        {address && (
-          <ConnectButton
-            showBalance={false}
-            accountStatus={{ smallScreen: "avatar", largeScreen: "full" }}
-            chainStatus="none"
-          />
-        )}
+        <div className="header-actions">
+          <button
+            className="theme-toggle"
+            onClick={toggleTheme}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            )}
+          </button>
+          {address && (
+            <ConnectButton
+              showBalance={false}
+              accountStatus={{ smallScreen: "avatar", largeScreen: "full" }}
+              chainStatus="none"
+            />
+          )}
+        </div>
       </header>
 
       {!address && <Landing />}
@@ -598,16 +954,7 @@ function App() {
         >
           {HERALDIA_ADDRESS.slice(0, 6)}&hellip;{HERALDIA_ADDRESS.slice(-4)}
         </a>
-        <div className="donate-row">
-          <span>Donations welcome</span>
-          <code
-            className="donate-addr"
-            onClick={() => navigator.clipboard.writeText(DONATE_ADDRESS)}
-            title="Click to copy"
-          >
-            {DONATE_ADDRESS.slice(0, 6)}&hellip;{DONATE_ADDRESS.slice(-4)}
-          </code>
-        </div>
+        <DonateWithQR />
       </footer>
     </div>
   );

@@ -57,6 +57,15 @@ export const artSelectionAbi = [
     outputs: [],
     stateMutability: "nonpayable",
   },
+  {
+    type: "event",
+    name: "ArtSelected",
+    inputs: [
+      { name: "tokenId", type: "uint256", indexed: true },
+      { name: "selectedBy", type: "address", indexed: true },
+      { name: "customHash", type: "bytes32", indexed: false },
+    ],
+  },
 ] as const satisfies Abi;
 
 export const storageAbi = [
