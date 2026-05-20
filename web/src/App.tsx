@@ -736,11 +736,6 @@ function Crafter({
                       style={{ background: targetColor }}
                     />
                   )}
-                  {sweeping && (
-                    <span className="sweep-status">
-                      scanning {Math.round(sweepProgress * 100)}%
-                    </span>
-                  )}
                   {!sweeping && sweepColors.size > 0 && (
                     <span className="sweep-status sweep-done">
                       {sweepColors.size} colors
@@ -763,21 +758,30 @@ function Crafter({
                     Scan Available Colors
                   </button>
                 ) : (
-                  <div className="color-swatches">
-                    {ACCENT_COLORS.map((c) => {
-                      const reachable = sweepColors.has(c);
-                      const dimmed = !sweeping && sweepColors.size > 0 && !reachable;
-                      return (
-                        <button
-                          key={c}
-                          className={`color-swatch${targetColor === c ? " selected" : ""}${dimmed ? " dimmed" : ""}`}
-                          style={{ background: c }}
-                          onClick={() => handleColorPick(c)}
-                          title={`${c}${dimmed ? " (not found for these traits)" : ""}`}
-                          aria-label={`Pick color ${c}`}
-                        />
-                      );
-                    })}
+                  <div className="color-swatches-wrap">
+                    {sweeping && (
+                      <div className="color-swatches-overlay">
+                        <span className="tx-spinner" />
+                        Scanning… {Math.round(sweepProgress * 100)}%
+                      </div>
+                    )}
+                    <div className={`color-swatches${sweeping ? " scanning" : ""}`}>
+                      {ACCENT_COLORS.map((c) => {
+                        const reachable = sweepColors.has(c);
+                        const dimmed = !sweeping && sweepColors.size > 0 && !reachable;
+                        return (
+                          <button
+                            key={c}
+                            className={`color-swatch${targetColor === c ? " selected" : ""}${dimmed ? " dimmed" : ""}`}
+                            style={{ background: c }}
+                            onClick={() => !sweeping && handleColorPick(c)}
+                            title={`${c}${dimmed ? " (not found for these traits)" : ""}`}
+                            aria-label={`Pick color ${c}`}
+                            disabled={sweeping}
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
                 {colorSearching && (

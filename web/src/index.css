@@ -915,6 +915,30 @@ main {
   background: var(--surface-hover);
 }
 
+.color-swatches-wrap {
+  position: relative;
+}
+
+.color-swatches-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  background: color-mix(in srgb, var(--bg) 75%, transparent);
+  backdrop-filter: blur(2px);
+  border-radius: var(--radius-xs);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.color-swatches.scanning {
+  pointer-events: none;
+}
+
 .color-swatches {
   display: flex;
   flex-wrap: wrap;
