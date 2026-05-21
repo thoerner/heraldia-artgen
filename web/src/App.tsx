@@ -240,6 +240,24 @@ function Landing({ onFaq }: { onFaq: () => void }) {
             FAQ
           </button>
         </div>
+        <a
+          className="contract-cite"
+          href="https://etherscan.io/address/0x3Af98Fb4dC151AF77C6bE0012Efa165033E88769#code#F1#L32"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="The on-chain function that makes this possible"
+        >
+          <span className="cite-kw">function</span>{" "}
+          <span className="cite-fn">selectArt</span>
+          <span className="cite-paren">(</span>
+          <span className="cite-type">uint256</span>{" "}
+          <span className="cite-param">tokenId</span>
+          <span className="cite-comma">,{" "}</span>
+          <span className="cite-type">bytes32</span>{" "}
+          <span className="cite-param">customHash</span>
+          <span className="cite-paren">)</span>
+          <span className="cite-arrow">&rarr;</span>
+        </a>
       </div>
     </div>
   );
@@ -1032,9 +1050,13 @@ function App() {
     if (!address) setSelectedToken(null);
   }, [address]);
 
+  // DEV: ?addr= override for testing wallet patterns
+  const debugAddr = new URLSearchParams(window.location.search).get("addr") as `0x${string}` | null;
+  const patternAddr = debugAddr ?? address;
+
   useEffect(() => {
-    if (address) {
-      const pattern = generateWalletPattern(address, theme);
+    if (patternAddr) {
+      const pattern = generateWalletPattern(patternAddr, theme);
       document.body.style.backgroundImage = pattern;
       document.body.style.backgroundRepeat = "repeat";
       document.body.style.backgroundAttachment = "fixed";
@@ -1042,7 +1064,7 @@ function App() {
       document.body.style.backgroundImage = "";
     }
     return () => { document.body.style.backgroundImage = ""; };
-  }, [address, theme]);
+  }, [patternAddr, theme]);
 
   const showFaq = page === "faq";
 

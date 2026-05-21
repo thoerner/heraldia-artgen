@@ -1282,6 +1282,82 @@ main {
   cursor: not-allowed;
 }
 
+/* ---- Contract Citation ---- */
+
+.contract-cite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-top: 1.5rem;
+  padding: 0.45rem 0.65rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  text-decoration: none;
+  transition: all var(--transition);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contract-cite:hover {
+  border-color: var(--accent);
+  color: var(--text-dim);
+  background: var(--surface-hover);
+}
+
+.cite-kw {
+  color: var(--text-faint);
+}
+
+.contract-cite:hover .cite-kw {
+  color: var(--accent);
+}
+
+.cite-fn {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.contract-cite:hover .cite-fn {
+  color: var(--text);
+}
+
+.cite-paren {
+  color: var(--text-faint);
+}
+
+.cite-type {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.cite-param {
+  color: var(--text-faint);
+}
+
+.cite-comma {
+  color: var(--text-faint);
+}
+
+.cite-arrow {
+  margin-left: 0.4rem;
+  font-style: normal;
+  font-size: 0.8rem;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.contract-cite:hover .cite-arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
 /* ---- Transaction Status ---- */
 
 .tx-message {
