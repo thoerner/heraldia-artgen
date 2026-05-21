@@ -374,9 +374,12 @@ All four contracts include identical rescue functionality (from Solady's `Rescua
 
 ## Dynamic Art Behavior Summary
 
+`getActiveHash` validates that the current token owner matches the `selectedBy` address stored with the custom art. Custom art is only active for the wallet that set it.
+
 | Scenario | Hash Used by Renderer | Art Changes? |
 |----------|----------------------|--------------|
 | No custom art set | `keccak256(owner, tokenId)` | Yes — changes on transfer (new owner = new hash) |
-| Custom art set via `selectArt` | The exact `bytes32` you provided | No — stays fixed regardless of transfers |
+| Custom art set via `selectArt` | The exact `bytes32` you provided | No — stays fixed while you hold the token |
 | Custom art reset via `resetArt` | Reverts to `keccak256(owner, tokenId)` | Back to dynamic behavior |
-| Token transferred with custom art | Custom hash remains active | Art stays the same |
+| Token transferred to new owner | `keccak256(newOwner, tokenId)` | New owner sees their default art, not the previous owner's custom art |
+| Token transferred back to setter | Custom hash becomes active again | Art reverts to the custom art — the stored `selectedBy` matches again |

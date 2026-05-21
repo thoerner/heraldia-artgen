@@ -1228,6 +1228,14 @@ function App() {
         <button className="footer-link" onClick={() => setPage(page === "faq" ? "home" : "faq")}>
           FAQ
         </button>
+        <span className="footer-sep">&middot;</span>
+        <a
+          href="https://github.com/thoerner/heralds-forge"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          GitHub
+        </a>
         <DonateWithQR />
       </footer>
     </div>
