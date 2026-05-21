@@ -12,7 +12,8 @@ async function readForges() {
     const body = await res.Body.transformToString();
     return JSON.parse(body);
   } catch (e) {
-    if (e.name === "NoSuchKey") return [];
+    if (e.name === "NoSuchKey" || e.Code === "NoSuchKey") return [];
+    if (e.name === "AccessDenied" && e.message?.includes("ListBucket")) return [];
     throw e;
   }
 }
@@ -29,27 +30,14 @@ async function writeForges(entries) {
   );
 }
 
-function cors(origin) {
-  return {
-    "access-control-allow-origin": origin || "*",
-    "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type, x-api-key",
-  };
-}
-
 export async function handler(event) {
-  const origin = event.headers?.origin || "*";
   const method = event.requestContext?.http?.method || event.httpMethod || "";
-
-  if (method === "OPTIONS") {
-    return { statusCode: 204, headers: cors(origin) };
-  }
 
   if (method === "GET") {
     const entries = await readForges();
     return {
       statusCode: 200,
-      headers: { ...cors(origin), "content-type": "application/json" },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(entries),
     };
   }
@@ -57,19 +45,19 @@ export async function handler(event) {
   if (method === "POST") {
     const key = event.headers?.["x-api-key"] || event.headers?.["X-Api-Key"] || "";
     if (!API_KEY || key !== API_KEY) {
-      return { statusCode: 403, headers: cors(origin), body: "Forbidden" };
+      return { statusCode: 403, body: "Forbidden" };
     }
 
     let body;
     try {
       body = JSON.parse(event.body || "{}");
     } catch {
-      return { statusCode: 400, headers: cors(origin), body: "Bad JSON" };
+      return { statusCode: 400, body: "Bad JSON" };
     }
 
     const { tokenId, hash, svg } = body;
     if (!tokenId || !svg) {
-      return { statusCode: 400, headers: cors(origin), body: "Missing tokenId or svg" };
+      return { statusCode: 400, body: "Missing tokenId or svg" };
     }
 
     const entries = await readForges();
@@ -83,10 +71,10 @@ export async function handler(event) {
 
     return {
       statusCode: 200,
-      headers: { ...cors(origin), "content-type": "application/json" },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ ok: true, count: trimmed.length }),
     };
   }
 
-  return { statusCode: 405, headers: cors(origin), body: "Method not allowed" };
+  return { statusCode: 405, body: "Method not allowed" };
 }
