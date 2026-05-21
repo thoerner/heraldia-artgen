@@ -1,50 +1,53 @@
 # Herald's Forge
 
-Unofficial community tool for [Heraldia](https://heraldia.art) — fully on-chain generative heraldic art by ab83.
+A community-built tool for crafting custom artwork on [Heraldia](https://heraldia.art) NFTs — fully on-chain generative heraldic art by ab83.
 
-Herald's Forge lets you craft custom artwork for your Heraldia tokens by choosing a theme, pattern, background, and color seed, previewing the result live, and writing it on-chain via `selectArt`.
+Pick a theme, pattern, background, and color seed, preview the result live, and write it on-chain. Your crest, your rules.
 
-> **Not affiliated with ab83 or the Heraldia team.** This tool interacts directly with the public Heraldia smart contracts on Ethereum mainnet.
+> **Not affiliated with ab83 or the Heraldia team.** Herald's Forge interacts directly with the public Heraldia smart contracts on Ethereum mainnet.
 
-## What's inside
+## Features
+
+**Crafter** — side-by-side current vs. preview panels with trait selectors and a color seed picker. Apply your design on-chain with `selectArt` or revert with `resetArt`, all from the browser.
+
+**Gallery** — browse every Heraldia token in your wallet with live on-chain artwork rendering.
+
+**Past Looks** — see the history of previous artwork configurations for any token, auto-refreshes after on-chain changes.
+
+**Explore mode** — append `?tokenId=<id>` to the URL to preview any token without connecting a wallet.
+
+**Wallet backgrounds** — each connected wallet gets a unique SVG background pattern derived from its address, adapting to light and dark mode.
+
+**Recently forged crests** — the landing page shows ambient floating crests that were recently forged through the app.
+
+**FAQ** — answers to common questions about the tool and how it works.
+
+## How it works
+
+Heraldia artwork is driven by two hashes:
+
+- **Static hash** — set at mint, defines the emblem shape. Immutable.
+- **Dynamic hash** — normally derived from the owner's wallet address. Determines colors, pattern, and background.
+
+Herald's Forge uses the [`selectArt`](https://etherscan.io/address/0x3Af98Fb4dC151AF77C6bE0012Efa165033E88769#code#F1#L32) function on the ArtSelection contract to override the dynamic hash with a custom `bytes32` value. The app constructs that hash from human-readable trait selections:
+
+| Trait | Hash byte | Effect |
+|-------|-----------|--------|
+| Theme | 0 | Sun / Moon |
+| Pattern | 1 | Pixel / Dot / Cross / Mix |
+| Background | 2 | One of 21 variants |
+| Colors | 3–31 | Influence the color palette |
+
+Custom art is tied to your wallet — if you transfer the token, the new owner sees their own default art. If it comes back to you, your custom art reactivates. See [CONTRACTS.md](CONTRACTS.md) for the full contract documentation.
+
+## Project structure
 
 ```
-├── web/              React app (Vite + wagmi + RainbowKit)
-├── infra/lambda/     AWS Lambda for recently forged crests API
-├── generate.mjs      CLI for local artwork generation & hash crafting
-├── CONTRACTS.md       Contract system documentation
-└── output/           Probe results, trait maps (gitignored)
+web/              React app (Vite + wagmi + RainbowKit)
+infra/lambda/     AWS Lambda for the recently forged crests API
+generate.mjs      CLI for local artwork generation & hash crafting
+CONTRACTS.md      Heraldia contract system documentation
 ```
-
-### Web app (`web/`)
-
-A wallet-connected interface with three views:
-
-1. **Landing** — explains what the tool does, shows recently forged crests floating in the background, and invites wallet connection
-2. **Gallery** — shows all Heraldia tokens owned by the connected wallet (uses Alchemy NFT API for token discovery, on-chain renderer for current artwork)
-3. **Crafter** — side-by-side current vs. preview panels, trait selectors, color seed, and on-chain `selectArt` / `resetArt` transactions
-
-Additional features:
-
-- **FAQ** — dedicated page covering common questions
-- **Past Looks** — history of previous artwork configurations for each token, auto-refreshes after on-chain changes
-- **Token info** — unique owner count (derived from Transfer events), click-to-copy for addresses and hashes
-- **Wallet backgrounds** — unique SVG pattern derived from each connected wallet address, adapts to light/dark mode
-- **Explore mode** — append `?tokenId=<id>` to preview any token without connecting a wallet
-- **Recently forged crests** — ambient floating SVGs on the landing page, powered by a small Lambda + S3 backend
-
-### CLI (`generate.mjs`)
-
-Node.js scripts for local experimentation:
-
-| Command | Description |
-|---------|-------------|
-| `npm run fetch -- <tokenId>` | Fetch and save on-chain artwork for a token |
-| `npm run preview -- <tokenId> <hash>` | Preview artwork with a custom hash (uses `stateOverride`) |
-| `npm run random -- <tokenId>` | Generate artwork with a random hash |
-| `npm run probe -- <tokenId>` | Systematically vary hash bytes to map traits |
-| `npm run analyze` | Derive byte-to-trait mapping from probe results |
-| `npm run craft -- <tokenId> --Theme Sun --Pattern Dot --Background "Grid Bold"` | Build a hash from desired traits |
 
 ## Setup
 
@@ -56,7 +59,15 @@ Node.js scripts for local experimentation:
 
 ### Environment
 
-Create `.env` in the repo root (used by the CLI):
+Create `web/.env` for the web app (see `web/.env.example`):
+
+```env
+VITE_ALCHEMY_API_KEY=YOUR_KEY
+VITE_FORGE_API_URL=YOUR_LAMBDA_FUNCTION_URL
+VITE_FORGE_API_KEY=YOUR_FORGE_API_KEY
+```
+
+Create `.env` in the repo root if you want to use the CLI tools:
 
 ```env
 TOKEN_CONTRACT_ADDRESS=0x11A7E42036F8D039b0ce54b5488E3df0dfF6Cf36
@@ -67,55 +78,41 @@ COLOR_WRAPPER_CONTRACT_ADDRESS=0xA6061e340DF02846230FF59072b5B17774211965
 RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
 ```
 
-Create `web/.env` (used by the web app — see `web/.env.example`):
-
-```env
-VITE_ALCHEMY_API_KEY=YOUR_KEY
-VITE_FORGE_API_URL=YOUR_LAMBDA_FUNCTION_URL
-VITE_FORGE_API_KEY=YOUR_FORGE_API_KEY
-```
-
 ### Install & run
 
 ```bash
-# CLI tools
-npm install
-
-# Web app
 cd web
 npm install
 npm run dev
 ```
 
-The web app runs at `http://localhost:5173`.
+The app runs at `http://localhost:5173`.
 
-## How it works
+### Build & deploy
 
-Heraldia uses a dual-hash mechanism:
+The web app deploys as a static site to S3 + CloudFront:
 
-- **Static hash** — set at mint, defines the emblem shape. Immutable.
-- **Dynamic hash** — derived from the owner's wallet address. Determines colors, pattern, and background.
+```bash
+cd web
+npm run build
+aws s3 sync dist s3://YOUR_BUCKET --delete --exclude "api/*"
+aws cloudfront create-invalidation --distribution-id YOUR_DIST_ID --paths "/*"
+```
 
-The `selectArt` function on the ArtSelection contract lets token owners override the dynamic hash with a custom `bytes32` value. Herald's Forge constructs that hash from human-readable trait selections:
+The `--exclude "api/*"` flag preserves the `recent-forges.json` file managed by the Lambda.
 
-| Trait | Hash byte | Operation |
-|-------|-----------|-----------|
-| Theme | 0 | `byte % 2` → Sun / Moon |
-| Pattern | 1 | `byte % 4` → Pixel / Dot / Cross / Mix |
-| Background | 2 | `byte % 21` → 21 variants |
-| Colors | 3–31 | Remaining bytes influence the color palette |
+### CLI tools
 
-## Contracts
+Node.js scripts in the repo root for local experimentation:
 
-| Contract | Address |
-|----------|---------|
-| Heraldia (ERC-721) | [`0x11A7...Cf36`](https://etherscan.io/address/0x11A7E42036F8D039b0ce54b5488E3df0dfF6Cf36) |
-| Renderer | [`0xeB9c...7064`](https://etherscan.io/address/0xeB9c4Ec06e15c95b5cA9e78171431a5C4cd57064) |
-| Storage | [`0x0D56...6391`](https://etherscan.io/address/0x0D562A65d3A209738Eba9601A88Bb0A62bc66391) |
-| Art Selection | [`0x3Af9...8769`](https://etherscan.io/address/0x3Af98Fb4dC151AF77C6bE0012Efa165033E88769) |
-| Color Wrapper | [`0xA606...1965`](https://etherscan.io/address/0xA6061e340DF02846230FF59072b5B17774211965) |
-
-See [CONTRACTS.md](CONTRACTS.md) for full documentation.
+| Command | Description |
+|---------|-------------|
+| `npm run fetch -- <tokenId>` | Fetch and save on-chain artwork for a token |
+| `npm run preview -- <tokenId> <hash>` | Preview artwork with a custom hash |
+| `npm run random -- <tokenId>` | Generate artwork with a random hash |
+| `npm run probe -- <tokenId>` | Systematically vary hash bytes to map traits |
+| `npm run analyze` | Derive byte-to-trait mapping from probe results |
+| `npm run craft -- <tokenId> --Theme Sun --Pattern Dot --Background "Grid Bold"` | Build a hash from desired traits |
 
 ## License
 
