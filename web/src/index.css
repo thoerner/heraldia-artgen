@@ -686,6 +686,17 @@ main {
   font-size: 0.76rem;
 }
 
+.copyable {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--border-strong);
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.copyable:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 /* ---- Trait List ---- */
 
 .trait-list {

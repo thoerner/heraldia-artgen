@@ -108,6 +108,22 @@ function DonateWithQR() {
   );
 }
 
+function Copyable({ value, display }: { value: string; display: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  }
+
+  return (
+    <span className="copyable" onClick={handleCopy} title={`${value}\nClick to copy`}>
+      {copied ? "Copied!" : display}
+    </span>
+  );
+}
+
 interface OwnedToken {
   tokenId: bigint;
   svg: string | null;
@@ -704,10 +720,14 @@ function Crafter({
           </div>
           <div className="info-grid">
             <span className="label">Owner</span>
-            <span className="value mono">{truncAddr(ownerAddress)}</span>
+            <span className="value mono">
+              <Copyable value={ownerAddress} display={truncAddr(ownerAddress)} />
+            </span>
             <span className="label">Static Hash</span>
             <span className="value mono">
-              {staticHash ? truncHash(staticHash) : "\u2014"}
+              {staticHash
+                ? <Copyable value={staticHash} display={truncHash(staticHash)} />
+                : "\u2014"}
             </span>
             <span className="label">Transfers</span>
             <span className="value">
@@ -719,7 +739,9 @@ function Crafter({
             </span>
             <span className="label">Custom Art</span>
             <span className="value mono">
-              {hasCustomArt ? truncHash(activeHashResult![1]) : "None"}
+              {hasCustomArt
+                ? <Copyable value={activeHashResult![1]} display={truncHash(activeHashResult![1])} />
+                : "None"}
             </span>
           </div>
           <div className="trait-list">
