@@ -1,5 +1,6 @@
 import {
   createPublicClient,
+  createWalletClient,
   http,
   keccak256,
   encodePacked,
@@ -9,11 +10,15 @@ import {
   pad,
   concat,
   parseAbi,
+  formatEther,
+  formatGwei,
 } from "viem";
 import { mainnet } from "viem/chains";
+import { privateKeyToAccount } from "viem/accounts";
 import { config } from "dotenv";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { randomBytes, createHash } from "crypto";
+import { createInterface } from "readline";
 
 config();
 
@@ -34,6 +39,9 @@ const rendererAbi = parseAbi([
 
 const artSelectionAbi = parseAbi([
   "function getActiveHash(uint256 tokenId) view returns (bool isActive, bytes32 customHash)",
+  "function selectArt(uint256 tokenId, bytes32 customHash)",
+  "function resetArt(uint256 tokenId)",
+  "event ArtSelected(uint256 indexed tokenId, address indexed selectedBy, bytes32 customHash)",
 ]);
 
 const storageAbi = parseAbi([
@@ -45,6 +53,30 @@ const client = createPublicClient({
   chain: mainnet,
   transport: http(RPC_URL),
 });
+
+function getWalletClient() {
+  const pk = process.env.PRIVATE_KEY;
+  if (!pk) {
+    console.error("Error: PRIVATE_KEY not set in .env");
+    process.exit(1);
+  }
+  const account = privateKeyToAccount(pk);
+  return createWalletClient({
+    account,
+    chain: mainnet,
+    transport: http(RPC_URL),
+  });
+}
+
+function confirm(question) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(`${question} (y/n): `, (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase() === "y");
+    });
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Storage slot helpers for ArtSelection state overrides
@@ -914,6 +946,342 @@ async function cmdColorList() {
 }
 
 // ---------------------------------------------------------------------------
+// Apply: write custom art on-chain
+// ---------------------------------------------------------------------------
+
+async function cmdApply(tokenId, hash) {
+  console.log(`\nApplying custom art for token #${tokenId}...`);
+  console.log(`  Hash: ${hash}`);
+
+  const walletClient = getWalletClient();
+  const account = walletClient.account;
+
+  const owner = await client.readContract({
+    address: HERALDIA,
+    abi: heraldiaAbi,
+    functionName: "ownerOf",
+    args: [BigInt(tokenId)],
+  });
+
+  if (owner.toLowerCase() !== account.address.toLowerCase()) {
+    console.error(`\n  Error: You (${account.address}) do not own token #${tokenId}.`);
+    console.error(`  Owner: ${owner}`);
+    process.exit(1);
+  }
+
+  console.log(`  Owner: ${owner} (you)`);
+
+  // Preview
+  console.log("\n  Generating preview...");
+  const uri = await fetchTokenURIWithHash(tokenId, hash);
+  const metadata = decodeDataURI(uri);
+  const svg = extractSVG(metadata);
+  printTraits(metadata);
+  saveArtwork(tokenId, hash.slice(0, 10), metadata, svg);
+
+  // Gas estimation
+  const gasEstimate = await client.estimateContractGas({
+    address: ART_SELECTION,
+    abi: artSelectionAbi,
+    functionName: "selectArt",
+    args: [BigInt(tokenId), hash],
+    account: account.address,
+  });
+
+  const gasPrice = await client.getGasPrice();
+  const estimatedCost = gasEstimate * gasPrice;
+  console.log(`\n  Estimated gas: ${gasEstimate} (~${formatEther(estimatedCost)} ETH @ ${formatGwei(gasPrice)} gwei)`);
+
+  const ok = await confirm("\n  Submit transaction?");
+  if (!ok) {
+    console.log("  Cancelled.\n");
+    return;
+  }
+
+  console.log("  Sending transaction...");
+  const txHash = await walletClient.writeContract({
+    address: ART_SELECTION,
+    abi: artSelectionAbi,
+    functionName: "selectArt",
+    args: [BigInt(tokenId), hash],
+  });
+  console.log(`  Tx hash: ${txHash}`);
+  console.log("  Waiting for confirmation...");
+
+  const receipt = await client.waitForTransactionReceipt({ hash: txHash });
+  console.log(`  Status: ${receipt.status === "success" ? "confirmed" : "failed"}`);
+  console.log(`  Block:  ${receipt.blockNumber}`);
+  console.log(`  Gas:    ${receipt.gasUsed} (${formatEther(receipt.gasUsed * receipt.effectiveGasPrice)} ETH)`);
+  console.log("\nDone.\n");
+}
+
+// ---------------------------------------------------------------------------
+// Reset: revert to default art on-chain
+// ---------------------------------------------------------------------------
+
+async function cmdReset(tokenId) {
+  console.log(`\nResetting custom art for token #${tokenId}...`);
+
+  const walletClient = getWalletClient();
+  const account = walletClient.account;
+
+  const owner = await client.readContract({
+    address: HERALDIA,
+    abi: heraldiaAbi,
+    functionName: "ownerOf",
+    args: [BigInt(tokenId)],
+  });
+
+  if (owner.toLowerCase() !== account.address.toLowerCase()) {
+    console.error(`\n  Error: You (${account.address}) do not own token #${tokenId}.`);
+    console.error(`  Owner: ${owner}`);
+    process.exit(1);
+  }
+
+  const activeHash = await client.readContract({
+    address: ART_SELECTION,
+    abi: artSelectionAbi,
+    functionName: "getActiveHash",
+    args: [BigInt(tokenId)],
+  });
+
+  if (!activeHash[0]) {
+    console.log("  No custom art is currently set for this token.");
+    console.log("Done.\n");
+    return;
+  }
+
+  console.log(`  Current custom hash: ${activeHash[1]}`);
+  console.log(`  Owner: ${owner} (you)`);
+
+  const gasEstimate = await client.estimateContractGas({
+    address: ART_SELECTION,
+    abi: artSelectionAbi,
+    functionName: "resetArt",
+    args: [BigInt(tokenId)],
+    account: account.address,
+  });
+
+  const gasPrice = await client.getGasPrice();
+  const estimatedCost = gasEstimate * gasPrice;
+  console.log(`\n  Estimated gas: ${gasEstimate} (~${formatEther(estimatedCost)} ETH @ ${formatGwei(gasPrice)} gwei)`);
+
+  const ok = await confirm("\n  Reset to default art?");
+  if (!ok) {
+    console.log("  Cancelled.\n");
+    return;
+  }
+
+  console.log("  Sending transaction...");
+  const txHash = await walletClient.writeContract({
+    address: ART_SELECTION,
+    abi: artSelectionAbi,
+    functionName: "resetArt",
+    args: [BigInt(tokenId)],
+  });
+  console.log(`  Tx hash: ${txHash}`);
+  console.log("  Waiting for confirmation...");
+
+  const receipt = await client.waitForTransactionReceipt({ hash: txHash });
+  console.log(`  Status: ${receipt.status === "success" ? "confirmed" : "failed"}`);
+  console.log(`  Block:  ${receipt.blockNumber}`);
+  console.log(`  Gas:    ${receipt.gasUsed} (${formatEther(receipt.gasUsed * receipt.effectiveGasPrice)} ETH)`);
+  console.log("\nDone.\n");
+}
+
+// ---------------------------------------------------------------------------
+// History: past looks from ArtSelected events
+// ---------------------------------------------------------------------------
+
+async function cmdHistory(tokenId, options = {}) {
+  console.log(`\nFetching art history for token #${tokenId}...`);
+
+  const logs = await client.getLogs({
+    address: ART_SELECTION,
+    event: artSelectionAbi.find((e) => e.type === "event" && e.name === "ArtSelected"),
+    args: { tokenId: BigInt(tokenId) },
+    fromBlock: 0n,
+    toBlock: "latest",
+  });
+
+  if (logs.length === 0) {
+    console.log("  No custom art has ever been applied to this token.\n");
+    return;
+  }
+
+  // Deduplicate by hash, keep earliest occurrence
+  const seen = new Map();
+  for (const log of logs) {
+    const hash = log.args.customHash;
+    if (!seen.has(hash)) {
+      seen.set(hash, {
+        hash,
+        selectedBy: log.args.selectedBy,
+        blockNumber: log.blockNumber,
+        txHash: log.transactionHash,
+      });
+    }
+  }
+
+  const uniqueLooks = [...seen.values()];
+  console.log(`  Found ${logs.length} event(s), ${uniqueLooks.length} unique hash(es):\n`);
+
+  for (let i = 0; i < uniqueLooks.length; i++) {
+    const look = uniqueLooks[i];
+    console.log(`  ${i + 1}. Hash:     ${look.hash}`);
+    console.log(`     Applied by: ${look.selectedBy}`);
+    console.log(`     Block:      ${look.blockNumber}`);
+    console.log(`     Tx:         ${look.txHash}`);
+    console.log();
+  }
+
+  if (options.preview) {
+    const owner = await client.readContract({
+      address: HERALDIA,
+      abi: heraldiaAbi,
+      functionName: "ownerOf",
+      args: [BigInt(tokenId)],
+    });
+
+    console.log("  Generating previews...");
+    ensureOutputDir();
+    for (const look of uniqueLooks) {
+      try {
+        const uri = await fetchTokenURIWithHash(tokenId, look.hash);
+        const metadata = decodeDataURI(uri);
+        const svg = extractSVG(metadata);
+        saveArtwork(tokenId, `history-${look.hash.slice(0, 10)}`, metadata, svg);
+      } catch (e) {
+        console.error(`    Failed to preview ${look.hash.slice(0, 10)}: ${e.shortMessage || e.message}`);
+      }
+    }
+  }
+
+  console.log("Done.\n");
+}
+
+// ---------------------------------------------------------------------------
+// Sweep: systematic color discovery for current trait combo
+// ---------------------------------------------------------------------------
+
+async function cmdSweep(tokenId, desiredTraits = {}, options = {}) {
+  const mapPath = "output/trait-map.json";
+  if (!existsSync(mapPath)) {
+    console.error(`Error: ${mapPath} not found. Run 'analyze' first.`);
+    process.exit(1);
+  }
+
+  const traitMap = JSON.parse(readFileSync(mapPath, "utf-8"));
+  const concurrency = options.concurrency || 8;
+  const pool = createPool(concurrency);
+
+  const owner = await client.readContract({
+    address: HERALDIA,
+    abi: heraldiaAbi,
+    functionName: "ownerOf",
+    args: [BigInt(tokenId)],
+  });
+
+  // Build trait-constrained bytes
+  const constrainedBytes = {};
+  for (const [traitType, desiredValue] of Object.entries(desiredTraits)) {
+    const info = traitMap[traitType];
+    if (!info || info.type === "palette") continue;
+    const reverseMap = {};
+    for (const [key, val] of Object.entries(info.mapping)) reverseMap[val] = Number(key);
+    if (reverseMap[desiredValue] === undefined) {
+      console.error(`  Error: '${desiredValue}' is not valid for ${traitType}. Options: ${info.values.join(", ")}`);
+      process.exit(1);
+    }
+    constrainedBytes[info.byte] = reverseMap[desiredValue];
+  }
+
+  console.log(`\nSweeping colors for token #${tokenId}...`);
+  if (Object.keys(desiredTraits).length > 0) {
+    console.log(`  Fixed traits: ${Object.entries(desiredTraits).map(([k, v]) => `${k}=${v}`).join(", ")}`);
+  }
+  console.log(`  Concurrency: ${concurrency}`);
+
+  // Sweep bytes 3-31 (color/variation bytes) with step size
+  const step = 8;
+  const tasks = [];
+  for (let bytePos = 3; bytePos < 32; bytePos++) {
+    for (let val = 0; val < 256; val += step) {
+      tasks.push({ bytePos, byteVal: val });
+    }
+  }
+
+  console.log(`  Testing ${tasks.length} byte combinations...\n`);
+
+  const colorToHash = new Map();
+  let completed = 0;
+
+  await Promise.allSettled(
+    tasks.map(({ bytePos, byteVal }) =>
+      pool(async () => {
+        const hashBytes = Buffer.alloc(32, 0);
+        for (const [pos, val] of Object.entries(constrainedBytes)) {
+          hashBytes[Number(pos)] = val;
+        }
+        hashBytes[bytePos] = byteVal;
+        const hash = toHex(hashBytes);
+
+        const { colors } = await fetchMetadataForProbe(tokenId, hash, owner);
+        completed++;
+
+        for (const c of colors) {
+          if (c !== "#000000" && c !== "#ffffff" && !colorToHash.has(c)) {
+            colorToHash.set(c, hash);
+          }
+        }
+
+        if (completed % 50 === 0 || completed === tasks.length) {
+          process.stdout.write(`\r  ${completed}/${tasks.length} tested, ${colorToHash.size} colors found`);
+        }
+      })
+    )
+  );
+  console.log(`\r  ${completed}/${tasks.length} tested, ${colorToHash.size} colors found\n`);
+
+  if (colorToHash.size === 0) {
+    console.log("  No accent colors found.");
+  } else {
+    // Sort by hue
+    const hue = (hex) => {
+      const r = parseInt(hex.slice(1, 3), 16) / 255;
+      const g = parseInt(hex.slice(3, 5), 16) / 255;
+      const b = parseInt(hex.slice(5, 7), 16) / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      if (max === min) return 0;
+      const d = max - min;
+      let h;
+      if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
+      else if (max === g) h = ((b - r) / d + 2);
+      else h = ((r - g) / d + 4);
+      return h * 60;
+    };
+
+    const sorted = [...colorToHash.entries()].sort((a, b) => hue(a[0]) - hue(b[0]));
+
+    console.log("  Available colors:\n");
+    console.log("  Color      Hash");
+    console.log("  ─────────  ────────────────────────────────────────────────────────────");
+    for (const [color, hash] of sorted) {
+      console.log(`  ${color}  ${hash}`);
+    }
+
+    // Save results
+    ensureOutputDir();
+    const results = sorted.map(([color, hash]) => ({ color, hash }));
+    const outPath = "output/sweep-results.json";
+    writeFileSync(outPath, JSON.stringify(results, null, 2));
+    console.log(`\n  Saved ${results.length} colors → ${outPath}`);
+  }
+
+  console.log("\nDone.\n");
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -932,6 +1300,11 @@ Usage:
   node generate.mjs color-list                                          List all known accent colors
   node generate.mjs color-search <tokenId> <#hex> [--max N] [--<Trait> <value>]
                                                                         Brute-force hashes for a target color
+  node generate.mjs apply        <tokenId> <hash>                       Apply custom art on-chain (selectArt)
+  node generate.mjs reset        <tokenId>                              Reset to default art on-chain (resetArt)
+  node generate.mjs history      <tokenId> [--preview]                  Show past art from on-chain events
+  node generate.mjs sweep        <tokenId> [--<Trait> <value>] [--concurrency N]
+                                                                        Discover available colors for a trait combo
 
 Examples:
   node generate.mjs fetch 1
@@ -940,10 +1313,13 @@ Examples:
   node generate.mjs analyze
   node generate.mjs craft 1702 --Background "Grid Bold" --Pattern "Cross"
   node generate.mjs color-list
-  node generate.mjs color-search 1702 "#efaf00"
   node generate.mjs color-search 1702 "#efaf00" --max 200 --Background "Solid"
+  node generate.mjs apply 1702 0x000000c0e3d195d9f119c2f3e309bc645571b62d83002cda3b97d652dbf0dd28
+  node generate.mjs reset 1702
+  node generate.mjs history 1702 --preview
+  node generate.mjs sweep 1702 --Background "Solid" --Pattern "Cross"
 
-Output is saved to the output/ directory.
+Output is saved to the output/ directory. On-chain writes require PRIVATE_KEY in .env.
 `);
 }
 
@@ -1047,6 +1423,64 @@ async function main() {
       }
     }
     await cmdColorSearch(tokenId, targetColor, desiredTraits, { maxAttempts, concurrency });
+    return;
+  }
+
+  if (command === "apply") {
+    const tokenId = args[1];
+    const hash = args[2];
+    if (!tokenId || !hash) {
+      console.error("Error: usage: node generate.mjs apply <tokenId> <hash>");
+      process.exit(1);
+    }
+    if (!hash.startsWith("0x") || hash.length !== 66) {
+      console.error("Error: hash must be a 66-char hex bytes32 value (0x + 64 hex chars).");
+      process.exit(1);
+    }
+    await cmdApply(tokenId, hash);
+    return;
+  }
+
+  if (command === "reset") {
+    const tokenId = args[1];
+    if (!tokenId) {
+      console.error("Error: usage: node generate.mjs reset <tokenId>");
+      process.exit(1);
+    }
+    await cmdReset(tokenId);
+    return;
+  }
+
+  if (command === "history") {
+    const tokenId = args[1];
+    if (!tokenId) {
+      console.error("Error: usage: node generate.mjs history <tokenId> [--preview]");
+      process.exit(1);
+    }
+    const preview = args.includes("--preview");
+    await cmdHistory(tokenId, { preview });
+    return;
+  }
+
+  if (command === "sweep") {
+    const tokenId = args[1];
+    if (!tokenId) {
+      console.error("Error: usage: node generate.mjs sweep <tokenId> [--<Trait> <value>] [--concurrency N]");
+      process.exit(1);
+    }
+    const concIdx = args.indexOf("--concurrency");
+    const concurrency = concIdx !== -1 ? Number(args[concIdx + 1]) : 8;
+    const desiredTraits = {};
+    const skipFlags = new Set(["--concurrency", "--preview"]);
+    for (let i = 2; i < args.length; i++) {
+      if (skipFlags.has(args[i])) { i++; continue; }
+      if (args[i].startsWith("--")) {
+        const key = args[i].slice(2);
+        const val = args[i + 1];
+        if (val) { desiredTraits[key] = val; i++; }
+      }
+    }
+    await cmdSweep(tokenId, desiredTraits, { concurrency });
     return;
   }
 

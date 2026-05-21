@@ -78,6 +78,7 @@ RENDERER_CONTRACT_ADDRESS=0xeB9c4Ec06e15c95b5cA9e78171431a5C4cd57064
 STORAGE_CONTRACT_ADDRESS=0x0D562A65d3A209738Eba9601A88Bb0A62bc66391
 ART_SELECTION_CONTRACT_ADDRESS=0x3Af98Fb4dC151AF77C6bE0012Efa165033E88769
 RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
+PRIVATE_KEY=0xYOUR_PRIVATE_KEY   # required for apply/reset commands
 ```
 
 ### Install & run
@@ -105,17 +106,50 @@ The `--exclude "api/*"` flag preserves the `recent-forges.json` file managed by 
 
 ### CLI tools
 
-Node.js scripts in the repo root for local experimentation:
+The repo root contains `generate.mjs`, a full-featured CLI for local experimentation and on-chain writes. Requires `PRIVATE_KEY` in `.env` for on-chain commands (`apply`, `reset`).
 
+```bash
+npm install   # from repo root
+```
 
-| Command                                                                         | Description                                     |
-| ------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `npm run fetch -- <tokenId>`                                                    | Fetch and save on-chain artwork for a token     |
-| `npm run preview -- <tokenId> <hash>`                                           | Preview artwork with a custom hash              |
-| `npm run random -- <tokenId>`                                                   | Generate artwork with a random hash             |
-| `npm run probe -- <tokenId>`                                                    | Systematically vary hash bytes to map traits    |
-| `npm run analyze`                                                               | Derive byte-to-trait mapping from probe results |
-| `npm run craft -- <tokenId> --Theme Sun --Pattern Dot --Background "Grid Bold"` | Build a hash from desired traits                |
+#### Viewing & previewing
+
+| Command | Description |
+| --- | --- |
+| `npm run fetch -- <tokenId>` | Fetch and save current on-chain artwork |
+| `npm run preview -- <tokenId> --hash <bytes32>` | Preview artwork with a specific hash |
+| `npm run preview -- <tokenId> --wallet <address>` | Preview as if a wallet owned the token |
+| `npm run preview -- <tokenId> --random` | Preview with a random hash |
+| `npm run history -- <tokenId>` | List all past art hashes from on-chain events |
+| `npm run history -- <tokenId> --preview` | Same, but also generate SVG previews |
+
+#### Crafting & color discovery
+
+| Command | Description |
+| --- | --- |
+| `npm run craft -- <tokenId> --Theme Sun --Pattern Dot --Background "Grid Bold"` | Build a hash from desired traits |
+| `npm run craft -- <tokenId> --seed 42 --Theme Moon` | Same, with a deterministic variation seed |
+| `npm run color-list` | List all known accent colors from probe data |
+| `npm run color-search -- <tokenId> <#hex>` | Brute-force hashes to find a target color |
+| `npm run sweep -- <tokenId> --Background Solid --Pattern Cross` | Discover all reachable colors for a trait combo |
+
+#### On-chain writes
+
+| Command | Description |
+| --- | --- |
+| `npm run apply -- <tokenId> <hash>` | Apply custom art on-chain (`selectArt`) |
+| `npm run reset -- <tokenId>` | Reset to default art on-chain (`resetArt`) |
+
+Both show a gas estimate and require `y` confirmation before submitting.
+
+#### Analysis (advanced)
+
+| Command | Description |
+| --- | --- |
+| `npm run probe -- <tokenId>` | Systematically vary hash bytes to map traits |
+| `npm run analyze` | Derive byte-to-trait mapping from probe results |
+
+Run `probe` then `analyze` once to generate `output/trait-map.json`, which is required by `craft`, `color-search`, `color-list`, and `sweep`.
 
 
 ## License

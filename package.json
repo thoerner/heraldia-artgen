@@ -8,7 +8,13 @@
     "random": "node generate.mjs random",
     "probe": "node generate.mjs probe",
     "analyze": "node generate.mjs analyze",
-    "craft": "node generate.mjs craft"
+    "craft": "node generate.mjs craft",
+    "apply": "node generate.mjs apply",
+    "reset": "node generate.mjs reset",
+    "history": "node generate.mjs history",
+    "sweep": "node generate.mjs sweep",
+    "color-list": "node generate.mjs color-list",
+    "color-search": "node generate.mjs color-search"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
