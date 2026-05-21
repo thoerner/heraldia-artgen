@@ -20,6 +20,7 @@ import { usePastLooks } from "./usePastLooks";
 import { useColorSearch } from "./useColorSearch";
 import { useColorSweep } from "./useColorSweep";
 import { ACCENT_COLORS } from "./accentColors";
+import { generateWalletPattern } from "./walletPattern";
 
 // ---------------------------------------------------------------------------
 // Gallery token type
@@ -1030,6 +1031,18 @@ function App() {
   useEffect(() => {
     if (!address) setSelectedToken(null);
   }, [address]);
+
+  useEffect(() => {
+    if (address) {
+      const pattern = generateWalletPattern(address, theme);
+      document.body.style.backgroundImage = pattern;
+      document.body.style.backgroundRepeat = "repeat";
+      document.body.style.backgroundAttachment = "fixed";
+    } else {
+      document.body.style.backgroundImage = "";
+    }
+    return () => { document.body.style.backgroundImage = ""; };
+  }, [address, theme]);
 
   const showFaq = page === "faq";
 

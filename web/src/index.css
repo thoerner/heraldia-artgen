@@ -73,15 +73,17 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-[data-theme="dark"] body {
-  background:
-    radial-gradient(
-      ellipse at top,
-      rgba(201, 162, 39, 0.04) 0%,
-      transparent 50%
-    ),
-    var(--bg);
-  background-attachment: fixed;
+[data-theme="dark"] .app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(
+    ellipse at top,
+    rgba(201, 162, 39, 0.04) 0%,
+    transparent 50%
+  );
 }
 
 a {
