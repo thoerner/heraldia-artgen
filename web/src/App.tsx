@@ -21,12 +21,25 @@ import { useColorSearch } from "./useColorSearch";
 import { useColorSweep } from "./useColorSweep";
 import { ACCENT_COLORS } from "./accentColors";
 import { generateWalletPattern } from "./walletPattern";
+import { track } from "./track";
 
 // ---------------------------------------------------------------------------
 // Gallery token type
 // ---------------------------------------------------------------------------
 
 const DONATE_ADDRESS = "0xc05FFc2fa06DAC5BaF09072752Cc21Cc832f6341";
+
+function refreshOpenSeaMetadata(tokenId: bigint) {
+  const key = import.meta.env.VITE_OPENSEA_API_KEY as string;
+  if (!key) return;
+  fetch(
+    `https://api.opensea.io/api/v2/chain/ethereum/contract/${HERALDIA_ADDRESS}/nfts/${tokenId}/refresh`,
+    {
+      method: "POST",
+      headers: { "x-api-key": key },
+    },
+  ).catch(() => {});
+}
 
 // ---------------------------------------------------------------------------
 // Theme toggle
@@ -163,6 +176,22 @@ const FAQ_ITEMS: { q: string; a: string }[] = [
     q: "What about malicious inputs?",
     a: "Params are encoded and submitted on-chain via standard wallet signing. Still: always verify tx details before confirming.",
   },
+  {
+    q: "My art didn\u2019t update on OpenSea.",
+    a: "We refresh your token\u2019s metadata on OpenSea automatically after each change, but OpenSea sometimes caches old metadata even after a refresh is triggered. This happens with all dynamic artwork collections \u2014 checking again later usually shows the correct art.",
+  },
+  {
+    q: "Do you track or sell my data?",
+    a: "We collect lightweight, self-hosted usage statistics to understand which features are used. We do not use cookies, fingerprinting, third-party analytics, wallet-address tracking, or persistent user identifiers.",
+  },
+  {
+    q: "Is this permanent?",
+    a: "No. When you transfer the token to someone else, the artwork will mutate according to the Heraldia protocol. However, token holders can re-apply any artwork created by the forge by browsing the token\u2019s Past Looks. You can also still use the official Time Machine as normal, or reset the custom artwork to your default artwork per the protocol.",
+  },
+  {
+    q: "What\u2019s the donation button about? Does this cost you money?",
+    a: "Herald\u2019s Forge is a free community tool and always will be. That said, it\u2019s not free to run \u2014 hosting, domain registration, and especially the color sweep feature (which hammers RPC endpoints pretty hard) all have real costs. If you enjoy the tool and want to help keep the lights on, a small tip is always appreciated but never expected.",
+  },
 ];
 
 function FAQPage({ onBack }: { onBack: () => void }) {
@@ -181,6 +210,152 @@ function FAQPage({ onBack }: { onBack: () => void }) {
             </details>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+const CONTRACT_INFO = [
+  {
+    role: "NFT Token",
+    name: "Heraldia (ERC-721)",
+    address: HERALDIA_ADDRESS,
+    desc: "The core NFT contract. Holds ownership, delegates rendering to the Renderer, and increments transfer counts on every transfer. Implements ERC-721, EIP-2981 royalties, and EIP-4906 metadata update signals.",
+  },
+  {
+    role: "Renderer",
+    name: "HeraldiaRendererV2",
+    address: RENDERER_ADDRESS,
+    desc: "The on-chain rendering engine. Computes JSON metadata and SVG artwork entirely on-chain by reading hash bytes and mapping them to visual traits. Called by the token contract\u2019s tokenURI function.",
+  },
+  {
+    role: "Storage",
+    name: "HeraldiaStorage",
+    address: STORAGE_ADDRESS,
+    desc: "Stores two immutable pieces of per-token data: the original static hash (set at mint) and the transfer count (incremented on every transfer). The static hash never changes.",
+  },
+  {
+    role: "Art Selection",
+    name: "HeraldiaArtSelection",
+    address: ART_SELECTION_ADDRESS,
+    desc: "Allows token owners to override their artwork by submitting any bytes32 hash. The renderer checks this contract first \u2014 if a custom hash is active, it uses that instead of the default owner-derived hash.",
+  },
+];
+
+function TechPage({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="faq-page">
+      <button className="back-btn" onClick={onBack}>
+        <span aria-hidden="true">&larr;</span> Back
+      </button>
+      <div className="tech-details">
+        <h2 className="faq-heading">Technical Details</h2>
+
+        <section className="tech-section">
+          <h3>How It Works</h3>
+          <p>
+            Heraldia artwork is generated entirely on-chain. Every token has a <strong>hash</strong> &mdash; a 32-byte
+            value &mdash; that the renderer reads byte-by-byte to determine visual traits like theme, pattern,
+            background, emblem, and colors.
+          </p>
+          <p>
+            By default, a token&rsquo;s hash is computed as <code>keccak256(owner, tokenId)</code>, meaning the
+            artwork changes every time the token is transferred to a new wallet. The <strong>Art Selection</strong>{" "}
+            contract lets owners override this with any custom hash, which is exactly what Herald&rsquo;s Forge does.
+          </p>
+        </section>
+
+        <section className="tech-section">
+          <h3>The Rendering Pipeline</h3>
+          <ol className="tech-pipeline">
+            <li>You call <code>tokenURI(tokenId)</code> on the Renderer</li>
+            <li>It checks <strong>Art Selection</strong> for a custom hash override</li>
+            <li>If none, it computes <code>keccak256(owner, tokenId)</code> as the default</li>
+            <li>The active hash bytes are mapped to traits (theme, pattern, background, colors, etc.)</li>
+            <li>The Renderer calls the <strong>Color Wrapper</strong> to generate the full SVG</li>
+            <li>Everything is assembled into a JSON metadata object with a base64-encoded SVG</li>
+          </ol>
+        </section>
+
+        <section className="tech-section">
+          <h3>What Herald&rsquo;s Forge Does</h3>
+          <p>
+            When you pick a theme, pattern, and background in the Forge, we construct a <code>bytes32</code> hash
+            where specific bytes are set to produce those exact traits. The remaining bytes control color and variation.
+          </p>
+          <p>
+            We preview the result locally using Ethereum&rsquo;s <code>stateOverride</code> feature &mdash; simulating
+            the on-chain call with your chosen hash without spending gas. When you&rsquo;re happy, we submit a{" "}
+            <code>selectArt(tokenId, hash)</code> transaction to write it on-chain.
+          </p>
+        </section>
+
+        <section className="tech-section">
+          <h3>Hash &rarr; Trait Mapping</h3>
+          <table className="tech-table">
+            <thead>
+              <tr><th>Byte</th><th>Trait</th><th>How</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>0</td><td>Theme</td><td>Lower bits, mod 2 &rarr; Sun or Moon</td></tr>
+              <tr><td>1</td><td>Pattern</td><td>Mod 4 &rarr; Pixel, Dot, Cross, or Mix</td></tr>
+              <tr><td>2</td><td>Background</td><td>Mod 21 &rarr; one of 21 background styles</td></tr>
+              <tr><td>3+</td><td>Colors &amp; Variation</td><td>Remaining bytes feed the color palette randomizer</td></tr>
+              <tr><td>&mdash;</td><td>Transfers</td><td>Read from Storage contract, bucketed (0, 1-2, 3-4, &hellip;)</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section className="tech-section">
+          <h3>Contracts</h3>
+          <div className="tech-contracts">
+            {CONTRACT_INFO.map((c) => (
+              <div key={c.address} className="tech-contract-card">
+                <div className="tech-contract-role">{c.role}</div>
+                <div className="tech-contract-name">{c.name}</div>
+                <a
+                  className="tech-contract-address"
+                  href={`https://etherscan.io/address/${c.address}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {c.address}
+                </a>
+                <p className="tech-contract-desc">{c.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="tech-section">
+          <h3>Dynamic Art &amp; Transfers</h3>
+          <table className="tech-table">
+            <thead>
+              <tr><th>Scenario</th><th>What Happens</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>No custom art</td><td>Hash = <code>keccak256(owner, tokenId)</code> &mdash; art changes on every transfer</td></tr>
+              <tr><td>Custom art via Forge</td><td>Your chosen hash is used &mdash; art stays fixed while you hold the token</td></tr>
+              <tr><td>Token transferred</td><td>New owner sees their default art; your custom art is stored but inactive</td></tr>
+              <tr><td>Token transferred back</td><td>Your custom art reactivates automatically*</td></tr>
+              <tr><td>Reset art</td><td>Removes custom hash, reverts to dynamic behavior</td></tr>
+            </tbody>
+          </table>
+          <p className="tech-footnote">
+            *If another owner applies the same hash while holding the token, the contract&rsquo;s{" "}
+            <code>selectedBy</code> field updates to their address. In that case, you&rsquo;ll need to re-apply
+            it yourself from Past Looks.
+          </p>
+        </section>
+
+        <section className="tech-section">
+          <h3>Past Looks</h3>
+          <p>
+            Every <code>selectArt</code> call emits an <code>ArtSelected</code> event on-chain. The Forge reads
+            these event logs to build a history of all hashes ever applied to a token &mdash; by any owner. Any
+            current holder can re-apply a previous look with one click.
+          </p>
+        </section>
       </div>
     </div>
   );
@@ -219,6 +394,8 @@ function useRecentForges(): RecentForge[] {
 
 function Landing({ onFaq }: { onFaq: () => void }) {
   const recentForges = useRecentForges();
+
+  useEffect(() => { track("page_view"); }, []);
 
   return (
     <div className="landing">
@@ -523,8 +700,13 @@ function Crafter({
     sweeping,
     progress: sweepProgress,
     hasRun: sweepHasRun,
-    startSweep,
+    startSweep: rawStartSweep,
   } = useColorSweep(tokenId, ownerAddress, traits);
+
+  const startSweep = useCallback(() => {
+    track("color_scan", { theme: traits.Theme, pattern: traits.Pattern, bg: traits.Background });
+    rawStartSweep();
+  }, [rawStartSweep, traits]);
 
   const activeHash = overrideHash ?? colorHash ?? craftHash(traits, seed);
 
@@ -670,7 +852,8 @@ function Crafter({
 
   const runPreview = useCallback(() => {
     preview(tokenId, activeHash, ownerAddress);
-  }, [tokenId, ownerAddress, activeHash, preview]);
+    track("preview", { theme: traits.Theme, pattern: traits.Pattern, bg: traits.Background });
+  }, [tokenId, ownerAddress, activeHash, preview, traits]);
 
   useEffect(() => {
     const timer = setTimeout(runPreview, 300);
@@ -717,6 +900,8 @@ function Crafter({
       setTxMessage({ type: "success", text: "Custom art applied on-chain!" });
       fetchCurrentArt();
       refreshPastLooks();
+      refreshOpenSeaMetadata(tokenId);
+      track("apply_art", { tokenId: String(tokenId) });
       if (previewResult?.svg) {
         fetch(import.meta.env.VITE_FORGE_API_URL as string, {
           method: "POST",
@@ -746,6 +931,8 @@ function Crafter({
       setTxMessage({ type: "success", text: "Art reset to default!" });
       fetchCurrentArt();
       refreshPastLooks();
+      refreshOpenSeaMetadata(tokenId);
+      track("reset_art", { tokenId: String(tokenId) });
       const timer = setTimeout(() => {
         setTxMessage(null);
         resetResetArt();
@@ -850,7 +1037,7 @@ function Crafter({
                   <button
                     key={look.hash}
                     className={`past-look-card${onChainHash === look.hash ? " active" : ""}${overrideHash === look.hash ? " selected" : ""}`}
-                    onClick={() => setOverrideHash(look.hash)}
+                    onClick={() => { setOverrideHash(look.hash); track("past_look", { tokenId: String(tokenId) }); }}
                     title={look.hash}
                   >
                     <div className="past-look-art">
@@ -954,7 +1141,7 @@ function Crafter({
                     className="btn-sweep"
                     onClick={startSweep}
                   >
-                    Scan Available Colors
+                    🎨 Scan Available Colors
                   </button>
                 ) : (
                   <div className="color-swatches-wrap">
@@ -1112,7 +1299,7 @@ function Crafter({
 // Root App
 // ---------------------------------------------------------------------------
 
-type Page = "home" | "faq";
+type Page = "home" | "faq" | "tech";
 
 function useExploreToken(): { tokenId: bigint; owner: `0x${string}` } | null {
   const param = new URLSearchParams(window.location.search).get("tokenId");
@@ -1137,11 +1324,23 @@ function App() {
   const { address } = useAccount();
   const [selectedToken, setSelectedToken] = useState<bigint | null>(null);
   const [theme, toggleTheme] = useTheme();
-  const [page, setPage] = useState<Page>("home");
+  const [page, setPageRaw] = useState<Page>(() => {
+    const p = new URLSearchParams(window.location.search).get("page");
+    if (p === "faq" || p === "tech") return p;
+    return "home";
+  });
+  const setPage = useCallback((p: Page) => {
+    setPageRaw(p);
+    const url = new URL(window.location.href);
+    if (p === "home") url.searchParams.delete("page");
+    else url.searchParams.set("page", p);
+    window.history.replaceState({}, "", url.toString());
+  }, []);
   const exploreToken = useExploreToken();
 
   useEffect(() => {
     if (!address) setSelectedToken(null);
+    else track("wallet_connect");
   }, [address]);
 
   useEffect(() => {
@@ -1157,6 +1356,7 @@ function App() {
   }, [address, theme]);
 
   const showFaq = page === "faq";
+  const showTech = page === "tech";
 
   return (
     <div className="app">
@@ -1187,6 +1387,8 @@ function App() {
 
       {showFaq ? (
         <FAQPage onBack={() => setPage("home")} />
+      ) : showTech ? (
+        <TechPage onBack={() => setPage("home")} />
       ) : (
         <>
           {!address && !exploreToken && <Landing onFaq={() => setPage("faq")} />}
@@ -1225,8 +1427,12 @@ function App() {
           {HERALDIA_ADDRESS.slice(0, 6)}&hellip;{HERALDIA_ADDRESS.slice(-4)}
         </a>
         <span className="footer-sep">&middot;</span>
-        <button className="footer-link" onClick={() => setPage(page === "faq" ? "home" : "faq")}>
+        <button className="footer-link" onClick={() => { setPage(page === "faq" ? "home" : "faq"); window.scrollTo(0, 0); }}>
           FAQ
+        </button>
+        <span className="footer-sep">&middot;</span>
+        <button className="footer-link" onClick={() => { setPage(page === "tech" ? "home" : "tech"); window.scrollTo(0, 0); }}>
+          Technical Details
         </button>
         <span className="footer-sep">&middot;</span>
         <a

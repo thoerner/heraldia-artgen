@@ -29,7 +29,7 @@ Heraldia artwork is driven by two hashes:
 - **Static hash** — set at mint, defines the emblem shape. Immutable.
 - **Dynamic hash** — normally derived from the owner's wallet address. Determines colors, pattern, and background.
 
-Herald's Forge uses the `[selectArt](https://etherscan.io/address/0x3Af98Fb4dC151AF77C6bE0012Efa165033E88769#code#F1#L32)` function on the ArtSelection contract to override the dynamic hash with a custom `bytes32` value. The app constructs that hash from human-readable trait selections:
+Herald's Forge uses the [selectArt](https://etherscan.io/address/0x3Af98Fb4dC151AF77C6bE0012Efa165033E88769#code#F1#L32) function on the ArtSelection contract to override the dynamic hash with a custom `bytes32` value. The app constructs that hash from human-readable trait selections:
 
 
 | Trait      | Hash byte | Effect                      |
