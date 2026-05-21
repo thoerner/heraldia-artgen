@@ -1340,6 +1340,19 @@ main {
   cursor: not-allowed;
 }
 
+/* ---- Explore Hint ---- */
+
+.explore-hint {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  padding: 0.65rem 0.85rem;
+  margin-top: 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  font-style: italic;
+}
+
 /* ---- Contract Citation ---- */
 
 .contract-cite {

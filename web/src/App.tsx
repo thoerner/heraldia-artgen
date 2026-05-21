@@ -489,10 +489,12 @@ function Crafter({
   tokenId,
   ownerAddress,
   onBack,
+  readOnly = false,
 }: {
   tokenId: bigint;
   ownerAddress: `0x${string}`;
   onBack: () => void;
+  readOnly?: boolean;
 }) {
   const [traits, setTraits] = useState<TraitSelection>({
     Theme: 0,
@@ -1068,31 +1070,38 @@ function Crafter({
             </div>
           )}
 
-          <div className="actions">
-            <button
-              className="btn-primary"
-              onClick={handleSelectArt}
-              disabled={selectArtPending || selectArtConfirming}
-            >
-              {selectArtPending
-                ? "Confirm in wallet\u2026"
-                : selectArtConfirming
-                  ? "Mining\u2026"
-                  : "Apply On-Chain"}
-            </button>
-            <button
-              className="btn-secondary"
-              onClick={handleResetArt}
-              disabled={!hasCustomArt || resetArtPending || resetArtConfirming}
-              title={!hasCustomArt ? "No custom art to reset" : ""}
-            >
-              {resetArtPending
-                ? "Confirm in wallet\u2026"
-                : resetArtConfirming
-                  ? "Mining\u2026"
-                  : "Reset Art"}
-            </button>
-          </div>
+          {!readOnly && (
+            <div className="actions">
+              <button
+                className="btn-primary"
+                onClick={handleSelectArt}
+                disabled={selectArtPending || selectArtConfirming}
+              >
+                {selectArtPending
+                  ? "Confirm in wallet\u2026"
+                  : selectArtConfirming
+                    ? "Mining\u2026"
+                    : "Apply On-Chain"}
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={handleResetArt}
+                disabled={!hasCustomArt || resetArtPending || resetArtConfirming}
+                title={!hasCustomArt ? "No custom art to reset" : ""}
+              >
+                {resetArtPending
+                  ? "Confirm in wallet\u2026"
+                  : resetArtConfirming
+                    ? "Mining\u2026"
+                    : "Reset Art"}
+              </button>
+            </div>
+          )}
+          {readOnly && (
+            <p className="explore-hint">
+              Connect your wallet to apply changes on-chain.
+            </p>
+          )}
         </section>
       </main>
     </>
@@ -1105,11 +1114,31 @@ function Crafter({
 
 type Page = "home" | "faq";
 
+function useExploreToken(): { tokenId: bigint; owner: `0x${string}` } | null {
+  const param = new URLSearchParams(window.location.search).get("tokenId");
+  const tokenId = param ? BigInt(param) : null;
+
+  const { data: owner } = useReadContract(
+    tokenId !== null
+      ? {
+          address: HERALDIA_ADDRESS,
+          abi: heraldiaAbi,
+          functionName: "ownerOf",
+          args: [tokenId],
+        }
+      : undefined,
+  );
+
+  if (tokenId === null || !owner) return null;
+  return { tokenId, owner: owner as `0x${string}` };
+}
+
 function App() {
   const { address } = useAccount();
   const [selectedToken, setSelectedToken] = useState<bigint | null>(null);
   const [theme, toggleTheme] = useTheme();
   const [page, setPage] = useState<Page>("home");
+  const exploreToken = useExploreToken();
 
   useEffect(() => {
     if (!address) setSelectedToken(null);
@@ -1160,7 +1189,16 @@ function App() {
         <FAQPage onBack={() => setPage("home")} />
       ) : (
         <>
-          {!address && <Landing onFaq={() => setPage("faq")} />}
+          {!address && !exploreToken && <Landing onFaq={() => setPage("faq")} />}
+
+          {!address && exploreToken && (
+            <Crafter
+              tokenId={exploreToken.tokenId}
+              ownerAddress={exploreToken.owner}
+              onBack={() => { window.history.replaceState({}, "", window.location.pathname); window.location.reload(); }}
+              readOnly
+            />
+          )}
 
           {address && !selectedToken && (
             <Gallery address={address} onSelect={setSelectedToken} />
