@@ -1,4 +1,5 @@
 .env
 node_modules/
 output/
+!output/trait-map.json
 dist/

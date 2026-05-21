@@ -149,7 +149,7 @@ Both show a gas estimate and require `y` confirmation before submitting.
 | `npm run probe -- <tokenId>` | Systematically vary hash bytes to map traits |
 | `npm run analyze` | Derive byte-to-trait mapping from probe results |
 
-Run `probe` then `analyze` once to generate `output/trait-map.json`, which is required by `craft`, `color-search`, `color-list`, and `sweep`.
+A default `output/trait-map.json` is included in the repo. Run `probe` then `analyze` only if you want to regenerate it yourself.
 
 
 ## License
