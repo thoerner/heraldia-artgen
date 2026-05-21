@@ -273,6 +273,9 @@ header h1 {
   [data-theme="dark"] .floating-crest {
     opacity: 0.05;
   }
+  .floating-crest:nth-child(n+7) {
+    display: none;
+  }
 }
 
 .landing-hero .eyebrow {

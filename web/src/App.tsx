@@ -192,12 +192,16 @@ interface RecentForge {
 }
 
 const CREST_POSITIONS = [
-  { top: "8%", left: "5%" },
-  { top: "22%", right: "7%" },
-  { top: "55%", left: "3%" },
-  { top: "68%", right: "4%" },
-  { top: "38%", left: "8%" },
-  { top: "82%", right: "9%" },
+  { top: "6%", left: "4%" },
+  { top: "14%", right: "6%" },
+  { top: "30%", left: "2%" },
+  { top: "42%", right: "3%" },
+  { top: "22%", left: "9%" },
+  { top: "58%", right: "8%" },
+  { top: "70%", left: "5%" },
+  { top: "78%", right: "5%" },
+  { top: "50%", left: "7%" },
+  { top: "88%", right: "7%" },
 ];
 
 function useRecentForges(): RecentForge[] {
@@ -206,7 +210,7 @@ function useRecentForges(): RecentForge[] {
   useEffect(() => {
     fetch(import.meta.env.VITE_FORGE_API_URL as string)
       .then((r) => r.json())
-      .then((data: RecentForge[]) => setForges(data.slice(0, 6)))
+      .then((data: RecentForge[]) => setForges(data.slice(0, 10)))
       .catch(() => {});
   }, []);
 
