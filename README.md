@@ -29,14 +29,16 @@ Heraldia artwork is driven by two hashes:
 - **Static hash** — set at mint, defines the emblem shape. Immutable.
 - **Dynamic hash** — normally derived from the owner's wallet address. Determines colors, pattern, and background.
 
-Herald's Forge uses the [`selectArt`](https://etherscan.io/address/0x3Af98Fb4dC151AF77C6bE0012Efa165033E88769#code#F1#L32) function on the ArtSelection contract to override the dynamic hash with a custom `bytes32` value. The app constructs that hash from human-readable trait selections:
+Herald's Forge uses the `[selectArt](https://etherscan.io/address/0x3Af98Fb4dC151AF77C6bE0012Efa165033E88769#code#F1#L32)` function on the ArtSelection contract to override the dynamic hash with a custom `bytes32` value. The app constructs that hash from human-readable trait selections:
 
-| Trait | Hash byte | Effect |
-|-------|-----------|--------|
-| Theme | 0 | Sun / Moon |
-| Pattern | 1 | Pixel / Dot / Cross / Mix |
-| Background | 2 | One of 21 variants |
-| Colors | 3–31 | Influence the color palette |
+
+| Trait      | Hash byte | Effect                      |
+| ---------- | --------- | --------------------------- |
+| Theme      | 0         | Sun / Moon                  |
+| Pattern    | 1         | Pixel / Dot / Cross / Mix   |
+| Background | 2         | One of 21 variants          |
+| Colors     | 3–31      | Influence the color palette |
+
 
 Custom art is tied to your wallet — if you transfer the token, the new owner sees their own default art. If it comes back to you, your custom art reactivates. See [CONTRACTS.md](CONTRACTS.md) for the full contract documentation.
 
@@ -105,14 +107,16 @@ The `--exclude "api/*"` flag preserves the `recent-forges.json` file managed by 
 
 Node.js scripts in the repo root for local experimentation:
 
-| Command | Description |
-|---------|-------------|
-| `npm run fetch -- <tokenId>` | Fetch and save on-chain artwork for a token |
-| `npm run preview -- <tokenId> <hash>` | Preview artwork with a custom hash |
-| `npm run random -- <tokenId>` | Generate artwork with a random hash |
-| `npm run probe -- <tokenId>` | Systematically vary hash bytes to map traits |
-| `npm run analyze` | Derive byte-to-trait mapping from probe results |
-| `npm run craft -- <tokenId> --Theme Sun --Pattern Dot --Background "Grid Bold"` | Build a hash from desired traits |
+
+| Command                                                                         | Description                                     |
+| ------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `npm run fetch -- <tokenId>`                                                    | Fetch and save on-chain artwork for a token     |
+| `npm run preview -- <tokenId> <hash>`                                           | Preview artwork with a custom hash              |
+| `npm run random -- <tokenId>`                                                   | Generate artwork with a random hash             |
+| `npm run probe -- <tokenId>`                                                    | Systematically vary hash bytes to map traits    |
+| `npm run analyze`                                                               | Derive byte-to-trait mapping from probe results |
+| `npm run craft -- <tokenId> --Theme Sun --Pattern Dot --Background "Grid Bold"` | Build a hash from desired traits                |
+
 
 ## License
 
