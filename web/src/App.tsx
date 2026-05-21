@@ -717,10 +717,6 @@ function Crafter({
             <span className="value">
               {uniqueOwners !== null ? String(uniqueOwners) : "\u2014"}
             </span>
-            <span className="label">Art Changes</span>
-            <span className="value">
-              {pastLooks.length > 0 ? String(pastLooks.length) : "0"}
-            </span>
             <span className="label">Custom Art</span>
             <span className="value mono">
               {hasCustomArt ? truncHash(activeHashResult![1]) : "None"}
