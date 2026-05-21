@@ -7,6 +7,7 @@ import {
   RENDERER_ADDRESS,
   ART_SELECTION_ADDRESS,
   STORAGE_ADDRESS,
+  heraldiaAbi,
   rendererAbi,
   artSelectionAbi,
   storageAbi,
@@ -533,6 +534,34 @@ function Crafter({
     fetchCurrentArt();
   }, [fetchCurrentArt]);
 
+  // Unique owners from Transfer events
+  const [uniqueOwners, setUniqueOwners] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!publicClient) return;
+    let cancelled = false;
+
+    async function loadOwners() {
+      try {
+        const logs = await publicClient!.getLogs({
+          address: HERALDIA_ADDRESS,
+          event: heraldiaAbi[1],
+          args: { tokenId },
+          fromBlock: 0n,
+          toBlock: "latest",
+        });
+        if (cancelled) return;
+        const owners = new Set(logs.map((l) => l.args.to));
+        setUniqueOwners(owners.size);
+      } catch {
+        if (!cancelled) setUniqueOwners(null);
+      }
+    }
+
+    loadOwners();
+    return () => { cancelled = true; };
+  }, [publicClient, tokenId]);
+
   // Past looks from on-chain events
   const { looks: pastLooks, loading: pastLooksLoading, refresh: refreshPastLooks } = usePastLooks(
     tokenId,
@@ -683,6 +712,14 @@ function Crafter({
             <span className="label">Transfers</span>
             <span className="value">
               {transferCount !== undefined ? String(transferCount) : "\u2014"}
+            </span>
+            <span className="label">Unique Owners</span>
+            <span className="value">
+              {uniqueOwners !== null ? String(uniqueOwners) : "\u2014"}
+            </span>
+            <span className="label">Art Changes</span>
+            <span className="value">
+              {pastLooks.length > 0 ? String(pastLooks.length) : "0"}
             </span>
             <span className="label">Custom Art</span>
             <span className="value mono">
