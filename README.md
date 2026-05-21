@@ -10,6 +10,7 @@ Herald's Forge lets you craft custom artwork for your Heraldia tokens by choosin
 
 ```
 ├── web/              React app (Vite + wagmi + RainbowKit)
+├── infra/lambda/     AWS Lambda for recently forged crests API
 ├── generate.mjs      CLI for local artwork generation & hash crafting
 ├── CONTRACTS.md       Contract system documentation
 └── output/           Probe results, trait maps (gitignored)
@@ -19,9 +20,18 @@ Herald's Forge lets you craft custom artwork for your Heraldia tokens by choosin
 
 A wallet-connected interface with three views:
 
-1. **Landing** — explains what the tool does, invites wallet connection
+1. **Landing** — explains what the tool does, shows recently forged crests floating in the background, and invites wallet connection
 2. **Gallery** — shows all Heraldia tokens owned by the connected wallet (uses Alchemy NFT API for token discovery, on-chain renderer for current artwork)
 3. **Crafter** — side-by-side current vs. preview panels, trait selectors, color seed, and on-chain `selectArt` / `resetArt` transactions
+
+Additional features:
+
+- **FAQ** — dedicated page covering common questions
+- **Past Looks** — history of previous artwork configurations for each token, auto-refreshes after on-chain changes
+- **Token info** — unique owner count (derived from Transfer events), click-to-copy for addresses and hashes
+- **Wallet backgrounds** — unique SVG pattern derived from each connected wallet address, adapts to light/dark mode
+- **Explore mode** — append `?tokenId=<id>` to preview any token without connecting a wallet
+- **Recently forged crests** — ambient floating SVGs on the landing page, powered by a small Lambda + S3 backend
 
 ### CLI (`generate.mjs`)
 
@@ -57,10 +67,12 @@ COLOR_WRAPPER_CONTRACT_ADDRESS=0xA6061e340DF02846230FF59072b5B17774211965
 RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
 ```
 
-Create `web/.env` (used by the web app):
+Create `web/.env` (used by the web app — see `web/.env.example`):
 
 ```env
 VITE_ALCHEMY_API_KEY=YOUR_KEY
+VITE_FORGE_API_URL=YOUR_LAMBDA_FUNCTION_URL
+VITE_FORGE_API_KEY=YOUR_FORGE_API_KEY
 ```
 
 ### Install & run
