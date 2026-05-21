@@ -534,7 +534,7 @@ function Crafter({
   }, [fetchCurrentArt]);
 
   // Past looks from on-chain events
-  const { looks: pastLooks, loading: pastLooksLoading } = usePastLooks(
+  const { looks: pastLooks, loading: pastLooksLoading, refresh: refreshPastLooks } = usePastLooks(
     tokenId,
     ownerAddress,
   );
@@ -595,13 +595,14 @@ function Crafter({
     if (selectArtConfirmed) {
       setTxMessage({ type: "success", text: "Custom art applied on-chain!" });
       fetchCurrentArt();
+      refreshPastLooks();
       const timer = setTimeout(() => {
         setTxMessage(null);
         resetSelectArt();
       }, 5000);
       return () => clearTimeout(timer);
     }
-  }, [selectArtConfirmed, fetchCurrentArt, resetSelectArt]);
+  }, [selectArtConfirmed, fetchCurrentArt, refreshPastLooks, resetSelectArt]);
 
   useEffect(() => {
     if (resetArtConfirming) {
@@ -613,13 +614,14 @@ function Crafter({
     if (resetArtConfirmed) {
       setTxMessage({ type: "success", text: "Art reset to default!" });
       fetchCurrentArt();
+      refreshPastLooks();
       const timer = setTimeout(() => {
         setTxMessage(null);
         resetResetArt();
       }, 5000);
       return () => clearTimeout(timer);
     }
-  }, [resetArtConfirmed, fetchCurrentArt, resetResetArt]);
+  }, [resetArtConfirmed, fetchCurrentArt, refreshPastLooks, resetResetArt]);
 
   function handleSelectArt() {
     setTxMessage(null);

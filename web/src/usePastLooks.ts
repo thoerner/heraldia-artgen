@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   keccak256,
   concat,
@@ -106,6 +106,9 @@ export function usePastLooks(
   const publicClient = usePublicClient();
   const [looks, setLooks] = useState<PastLook[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
     if (!publicClient) return;
@@ -189,7 +192,7 @@ export function usePastLooks(
     return () => {
       cancelled = true;
     };
-  }, [publicClient, tokenId, ownerAddress]);
+  }, [publicClient, tokenId, ownerAddress, refreshKey]);
 
-  return { looks, loading };
+  return { looks, loading, refresh };
 }
