@@ -4,8 +4,7 @@ import { http } from "wagmi";
 
 export const config = getDefaultConfig({
   appName: "Herald's Forge",
-  // Replace with your own WalletConnect project ID from https://cloud.walletconnect.com
-  projectId: "00000000000000000000000000000000",
+  projectId: (import.meta.env.VITE_WALLET_CONNECT_PROJECT_ID as string) || "00000000000000000000000000000000",
   chains: [mainnet],
   transports: {
     [mainnet.id]: http(
